@@ -1,0 +1,33 @@
+# ---- secrets: the signing key and its passwords never go to GitHub ----
+*.jks
+*.keystore
+keystore.properties
+export_credentials.cfg
+godot/keystore/
+web/android/keystore/
+
+# ---- Godot: caches and builds ----
+godot/.godot/
+godot/build/
+*.apk
+*.aab
+*.idsig
+*.pck
+
+# ---- web version: built files and old copies ----
+web/dist/
+web/build/
+web/work/
+web/amazonia.html
+web/v4*.html
+web/android/local.properties
+web/android/.gradle/
+web/android/build/
+web/android/app/build/
+web/android/app/src/main/assets/www/
+
+# ---- misc ----
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

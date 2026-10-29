@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>אמזוניה: הישרדות בג'ונגל</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Karantina:wght@400;700&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<!--STYLE-->
+</head>
+<body>
+<canvas id="c" tabindex="0" aria-label="עולם המשחק"></canvas>
+<div id="tint"></div>
+<div id="hurt"></div>
+
+<section id="loading" class="screen" aria-live="polite">
+  <div class="load-title">אמזוניה</div>
+  <div class="load-bar"><i id="loadFill"></i></div>
+  <div id="loadText">מגדלים ג'ונגל…</div>
+</section>
+
+<section id="menu" class="screen" hidden>
+  <div class="menu-side">
+    <h1 class="title">אמזוניה</h1>
+    <p class="tag">סימולציית הישרדות בג'ונגל של דרום אמריקה. צדים, נלחמים, מוצאים בן או בת זוג ומגדלים גורים, בזמן שכל השאר מנסים לשרוד בדיוק כמוך.</p>
+    <p class="ask">במי תשחק?</p>
+    <ul id="spList" class="sp-list"></ul>
+    <div id="spMini" class="spmini"></div>
+    <div class="opts">
+      <div class="optrow"><span>מין</span><div class="seg" id="sexSeg"><button data-v="m">זכר</button><button data-v="f">נקבה</button></div></div>
+      <div class="optrow"><span>כמות חיות</span><div class="seg" id="faSeg"><button data-v="0.5">רגילה</button><button data-v="0.75">גבוהה</button><button data-v="1">מלאה</button></div></div>
+    <div class="optrow"><span>גרפיקה</span><div class="seg" id="qSeg"><button data-v="low">חלשה</button><button data-v="med">רגילה</button><button data-v="high">גבוהה</button></div></div>
+    </div>
+    <div class="ctarow"><button id="contBtn" class="cta" hidden></button><button id="startBtn" class="cta">להיכנס לג'ונגל</button></div>
+    <p class="fine">משחקים עם עכבר ומקלדת. עם אוזניות זה הרבה יותר טוב.</p>
+  </div>
+  <aside id="spInfo" class="sp-info"></aside>
+</section>
+
+<div id="hud" hidden>
+  <div id="cmp" class="pn"><canvas id="cmpC" width="440" height="30"></canvas></div>
+  <div id="clock" class="pn"></div>
+  <div id="family" class="pn" hidden></div>
+  <div id="feed"></div>
+  <div id="goals" class="pn" hidden><h3><span>משימות</span><span id="lvlTxt"></span></h3><ul id="goalList"></ul><div class="xp"><b id="xpFill"></b></div></div>
+  <div id="target" class="pn" hidden></div>
+  <div id="prompts"></div>
+  <div id="vitals" class="pn">
+    <div class="who"><b id="vName"></b><span id="vStatus"></span></div>
+    <div class="bar hp" id="bHp"><span>בריאות</span><i><b></b></i></div>
+    <div class="bar food" id="bFood"><span>מזון</span><i><b></b></i></div>
+    <div class="bar water" id="bWater"><span>מים</span><i><b></b></i></div>
+    <div class="bar stam" id="bStam"><span>אנרגיה</span><i><b></b></i></div>
+    <div class="bar air" id="bAir" hidden><span>אוויר</span><i><b></b></i></div>
+  </div>
+  <canvas id="mini" width="380" height="380"></canvas>
+  <div id="big"></div>
+  <div id="helpTip" class="pn"><kbd>H</kbd>עזרה <kbd>B</kbd>ספר השדה <kbd>M</kbd>מפה</div>
+  <div id="qte" class="pn" hidden><div id="qteText"></div><i><b id="qteFill"></b></i></div>
+  <div id="mark" hidden>!</div>
+</div>
+
+<div id="lockhint" class="pn" hidden>לחץ על המסך כדי לשלוט עם העכבר</div>
+
+<div id="touch" hidden>
+  <div id="joyZone"></div>
+  <div id="lookZone"></div>
+  <div id="joy" aria-hidden="true"><i></i></div>
+  <div id="tbtns">
+    <button id="tAtk" class="tb"></button>
+    <button id="tJump" class="tb"></button>
+    <button id="tCrouch" class="tb"></button>
+    <button id="tUse" class="tb" hidden></button>
+    <button id="tLove" class="tb" hidden></button>
+    <button id="tFight" class="tb" hidden></button>
+    <button id="tRun" class="tb"></button>
+    <button id="tRest" class="tb"></button>
+    <button id="tCall" class="tb"></button>
+  </div>
+  <div id="ttop"><button id="tPause" class="tb"></button><button id="tGuide" class="tb"></button><button id="tSense" class="tb"></button><button id="tHud" class="tb"></button></div>
+</div>
+
+<section id="rotate" class="ov" hidden>
+  <div class="card">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2.2"/><path d="M11 18.5h2"/></svg>
+    <h2>לסובב את הטלפון</h2>
+    <p>המשחק בנוי למסך שוכב: אגודל שמאל זז, אגודל ימין צד.</p>
+    <div class="btns"><button class="btn" id="rotOk">להמשיך ככה</button></div>
+  </div>
+</section>
+
+<section id="pause" class="ov" hidden>
+  <div class="card">
+    <h2>הג'ונגל מחכה</h2>
+    <p>המשחק בהשהיה. הזמן בג'ונגל עצר עד שתחזור.</p>
+    <div class="optrow" style="color:var(--dim)"><span>גרפיקה</span><div class="seg" id="qSeg2"><button data-v="low">חלשה</button><button data-v="med">רגילה</button><button data-v="high">גבוהה</button></div></div>
+    <div class="optrow" style="color:var(--dim)"><span>מראה קולנועי</span><div class="seg" id="fxSeg"><button data-v="1">פועל</button><button data-v="0">כבוי</button></div></div>
+    <div class="optrow" style="color:var(--dim)"><span>מוזיקה</span><div class="seg" id="musSeg"><button data-v="1">פועלת</button><button data-v="0">כבויה</button></div></div>
+    <div id="pauseInfo"></div>
+    <div class="btns"><button class="btn pri" id="resumeBtn">להמשיך</button><button class="btn" id="photoBtn">מצב צילום</button><button class="btn" id="helpBtn">איך משחקים</button><button class="btn" id="menuBtn">לתפריט הראשי</button></div>
+  </div>
+</section>
+
+<section id="perks" class="ov" hidden>
+  <div class="card perkcard">
+    <h2 id="perkTitle">עלית רמה</h2>
+    <p>אפשר לבחור שדרוג אחד. הוא נשאר עד סוף המסע.</p>
+    <div id="perkGrid" class="perkgrid"></div>
+  </div>
+</section>
+<section id="saves" class="ov" hidden>
+  <div class="card">
+    <h2>המשחקים שלי</h2>
+    <div id="saveList"></div>
+    <div class="btns"><button class="btn" id="savesImport">📥 לטעון משחק מקוד</button><button class="btn" id="savesClose">סגירה</button></div>
+  </div>
+</section>
+<section id="help" class="ov" hidden>
+  <div class="card">
+    <h2>איך משחקים</h2>
+    <div class="scroll">
+    <div class="keys">
+      <kbd>W A S D</kbd><span>הליכה (המצלמה קובעת את הכיוון)</span>
+      <kbd>Shift</kbd><span>ריצה, שורפת אנרגיה</span>
+      <kbd>C</kbd><span>התגנבות: איטי ושקט, הטרף מזהה אותך מאוחר יותר</span>
+      <kbd>עכבר</kbd><span>סיבוב המצלמה, גלגלת לזום</span>
+      <kbd>קליק</kbd><span>נשיכה או מכה</span>
+      <kbd>רווח</kbd><span>קפיצה. בריצה ליד טרף: זינוק קטלני. בקרב: התחמקות. במים: צלילה</span>
+      <kbd>E</kbd><span>להחזיק כדי לאכול, לשתות או ללחך עשב</span>
+      <kbd>F</kbd><span>לחזר אחרי בן או בת זוג מהמין שלך</span>
+      <kbd>G</kbd><span>לאתגר יריב לקרב</span>
+      <kbd>R</kbd><span>קריאה: מבריחה טרף ומושכת בני זוג</span>
+      <kbd>Z</kbd><span>לנוח. להחזיק בלילה כדי לישון עד הבוקר</span>
+      <kbd>B</kbd><span>ספר השדה: כל המינים שגילית</span>
+      <kbd>M</kbd><span>מפה</span>
+      <kbd>Esc</kbd><span>השהיה</span>
+    </div>
+    <p style="margin-top:14px;color:var(--dim)">מזון ומים יורדים כל הזמן. כשאחד מהם נגמר, הבריאות יורדת. אוכלים טרף טרי, שותים בנחלים ובנהר, ונחים כדי להחלים.</p>
+    </div>
+    <div class="btns"><button class="btn pri" id="helpClose">הבנתי</button></div>
+  </div>
+</section>
+
+<section id="guide" class="ov" hidden>
+  <div class="card">
+    <div class="gh"><h2>ספר השדה</h2><span class="gcount" id="gCount"></span></div>
+    <div class="ggrid scroll" id="gGrid"></div>
+    <div class="btns"><button class="btn pri" id="guideClose">לחזור לג'ונגל</button></div>
+  </div>
+</section>
+
+<section id="mapov" class="ov" hidden>
+  <div class="card">
+    <canvas id="bigmap" width="900" height="900"></canvas>
+    <div class="mside">
+      <div class="legend"><span><i style="background:#ffd34d"></i>אתה</span><span><i style="background:#ff78ab"></i>בן או בת זוג וגורים</span><span><i style="background:#e8e2cf"></i>מקומות</span></div>
+      <div class="btns"><button class="btn pri" id="mapClose">לסגור</button></div>
+    </div>
+  </div>
+</section>
+
+<section id="death" class="ov" hidden>
+  <div class="card">
+    <h2>המסע נגמר</h2>
+    <p id="deathCause"></p>
+    <div class="stats" id="deathStats"></div>
+    <p id="deathSave" hidden></p>
+    <div class="btns"><button class="btn pri" id="heirBtn" hidden></button><button class="btn" id="loadBtn" hidden>להמשיך מהשמירה האחרונה</button><button class="btn pri" id="againBtn">לנסות שוב</button><button class="btn" id="otherBtn">לבחור חיה אחרת</button></div>
+  </div>
+</section>
+
+<!--SCRIPTS-->
+</body>
+</html>
+
+

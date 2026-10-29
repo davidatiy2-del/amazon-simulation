@@ -1,0 +1,18 @@
+import sys, json, time; sys.path.insert(0, __file__.rsplit('/', 1)[0])
+from harness import run, OUT
+def t(g):
+    g.hunter(); g.sim(1)
+    g.js("for (let k = 0; k < 4000 && !owMapReady(); k++) owMapStep(50); glbTexReady(true); glbCloudBuild();")
+    g.js("UI.open('map')"); time.sleep(0.5); g.js("bigDraw()")
+    g.js("window.__fr = []; (function f(t) { __fr.push(Math.round(t)); if (__fr.length < 400) requestAnimationFrame(f); })(performance.now());")
+    time.sleep(3)
+    print('frames in 3 s (map open, idle):', g.js("__fr.length"), g.js("__fr.slice(0, 8)"))
+    g.js("UI.close()"); time.sleep(0.3)
+    g.js("window.__fr = []; (function f(t) { __fr.push(Math.round(t)); if (__fr.length < 400) requestAnimationFrame(f); })(performance.now());")
+    time.sleep(3)
+    print('frames in 3 s (map closed):', g.js("__fr.length"))
+    g.js("UI.open('map')"); time.sleep(0.3)
+    g.js("window.__fr = []; window.__bd = []; const ob = bigDraw; window.bigDraw = function () { const t0 = performance.now(); ob(); __bd.push(Math.round(performance.now() - t0)); }; (function f(t) { __fr.push(Math.round(t)); MAPV.gLon += 0.01; GLB.moveT = performance.now(); MAPV.dirty = true; if (__fr.length < 400) requestAnimationFrame(f); })(performance.now());")
+    time.sleep(3)
+    print('frames in 3 s (spinning):', g.js("__fr.length"), 'bigDraw ms', g.js("__bd.slice(0, 12)"))
+run(t)

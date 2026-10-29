@@ -1,0 +1,57 @@
+import sys, json, time; sys.path.insert(0, __file__.rsplit('/', 1)[0])
+from harness import run, OUT
+MOBILE = len(sys.argv) > 1 and sys.argv[1] == 'phone'
+P = 'ph_' if MOBILE else ''
+def draw(g, n=1):
+    for k in range(n): g.js("bigDraw()"); time.sleep(0.05)
+def t(g):
+    g.hunter(); g.sim(1)
+    g.js("HUNT.camps.forEach((c, i) => { if (!c.own) VX.known.add(i); });")
+    t0 = time.time()
+    g.js("for (let k = 0; k < 4000 && !owMapReady(); k++) owMapStep(50);")
+    print('ow map', round(time.time() - t0, 2), 's')
+    t0 = time.time(); g.js("glbTexReady(true)"); print('globe texture', round(time.time() - t0, 2), 's', g.js("[GLB.tex.w, GLB.tex.h, GLB.tex.full]"))
+    g.js("UI.open('map')"); time.sleep(0.3)
+    print('mode', g.js("[MAPV.globe, MAPV.gz, MAPV.cw, MAPV.ch, glbGzMax(), glbSIn(), glbSOut()]"))
+    ms = g.js("(() => { GLB.key = ''; const t0 = performance.now(); bigDraw(); return performance.now() - t0; })()"); print('globe draw ms', round(ms, 1))
+    ms = g.js("(() => { GLB.key = ''; GLB.moveT = performance.now(); const t0 = performance.now(); bigDraw(); return performance.now() - t0; })()"); print('globe draw while moving ms', round(ms, 1))
+    time.sleep(0.3); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_1.png")
+    g.js(f"MAPV.gLon = glbLon(OW.cx - 300); MAPV.gLat = 0.25; GLB.key = '';"); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_ow.png")
+    g.js("MAPV.gLon = glbLon(2250); MAPV.gLat = -0.1;"); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_atl.png")
+    g.js("MAPV.gLon = glbLon(-200); MAPV.gLat = 0.1; MAPV.gz = 1.6;"); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_zoom.png")
+    g.js("MAPV.gLat = 0.95; MAPV.gz = 1;"); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_pole.png")
+    # into the flat map by zooming
+    g.js("MAPV.gLat = 0.05; MAPV.gLon = glbLon(P.a.pos.x); MAPV.gz = glbGzMax() * 0.95; mapZoomAt(1.3, MAPV.cw / 2, MAPV.ch / 2);")
+    print('after zoom in', g.js("[MAPV.globe, MAPV.s.toFixed(3), Math.round(MAPV.cx), Math.round(MAPV.cz)]"))
+    time.sleep(0.1); draw(g); time.sleep(0.4); draw(g)
+    g.page.screenshot(path=f"{OUT}/{P}globe_flat.png")
+    g.js("mapZoomAt(0.6, MAPV.cw / 2, MAPV.ch / 2)")
+    print('after zoom out', g.js("[MAPV.globe, MAPV.gz.toFixed(3)]"))
+    time.sleep(0.4); draw(g)
+    # tap a camp on the ball
+    g.js("MAPV.gLon = glbLon(OW.cx - 600); MAPV.gLat = 0.2; MAPV.gz = 1.5;"); draw(g)
+    f = g.js("(() => { const f = MAPV.feats.find(f => f.k === 'tribe' && f.o.kind === 'castle'); return f ? [f.x, f.y, f.o.tribe] : null; })()")
+    print('castle feat', f)
+    if f:
+        g.js(f"mapTap({f[0]}, {f[1]})"); draw(g)
+        print('info', g.js("$('mapInfo').innerText.replace(/\\n+/g, ' | ')"))
+        g.page.screenshot(path=f"{OUT}/{P}globe_tap.png")
+        g.js("mapInfoAct('x')")
+    # a spot in the ocean
+    g.js("MAPV.gLon = glbLon(2250); MAPV.gLat = 0; MAPV.gz = 1;"); draw(g)
+    g.js("mapTap(MAPV.cw / 2, MAPV.ch / 2)"); draw(g)
+    print('ocean info', g.js("$('mapInfo').innerText.replace(/\\n+/g, ' | ')"))
+    g.js("mapInfoAct('x')")
+    # the tools
+    g.js("mapTool('me')"); time.sleep(1.4); print('me 1', g.js("[MAPV.globe, MAPV.gz.toFixed(2), !!GLB.anim]"))
+    g.js("mapTool('me')"); time.sleep(1.6); print('me 2', g.js("[MAPV.globe, (MAPV.s || 0).toFixed(2)]"))
+    g.js("mapTool('globe')"); time.sleep(0.5); print('globe btn', g.js("[MAPV.globe, MAPV.gz]"))
+    g.js("mapTool('globe')"); time.sleep(0.5); print('globe btn 2', g.js("[MAPV.globe, MAPV.s.toFixed(2)]"))
+    print('errs', g.errors()[:6])
+if MOBILE: run(t, touch=True, w=780, h=360, mobile=True)
+else: run(t)

@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+// the key that signs the app: keep keystore/amazonia.jks and keystore.properties, every update must be signed with them
+def keyProps = new Properties()
+def keyFile = rootProject.file('keystore.properties')
+if (keyFile.exists()) keyFile.withInputStream { keyProps.load(it) }
+
+android {
+    namespace 'com.amazonia.game'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.amazonia.game'
+        minSdk 24
+        targetSdk 36
+        versionCode 53
+        versionName '53'
+    }
+
+    signingConfigs {
+        release {
+            if (keyFile.exists()) {
+                storeFile rootProject.file(keyProps['storeFile'])
+                storePassword keyProps['storePassword']
+                keyAlias keyProps['keyAlias']
+                keyPassword keyProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keyFile.exists()) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+}
