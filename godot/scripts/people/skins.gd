@@ -81,9 +81,8 @@ static func player_look(i: int, over := {}) -> Dictionary:
 
 static func is_kk(base: String) -> bool: return BASES.get(base, {}).get("fam", "") == "kk"
 
-# ---------------------------------------------------------------- the palette, recolored
+# ---------------------------------------------------------------- the palette, recolored (in shaders/character.gdshader)
 static var _src := {}      # tex name -> Image (RGBA8)
-static var _tex := {}      # key -> ImageTexture
 static var _mat := {}      # key -> Material
 static var _kinds := {}    # tex name -> PackedStringArray of swatch kinds
 
@@ -122,57 +121,51 @@ static func _swatch_kinds(tex: String) -> PackedStringArray:
 
 static func _ckey(c: Color) -> String: return "%.2f,%.2f,%.2f,%.1f" % [c.r, c.g, c.b, c.a]
 
-static func texture_for(tex: String, cloth: Color, metal: String, skin: int) -> Texture2D:
-	var key := "%s|%s|%s|%d" % [tex, _ckey(cloth), metal, skin]
-	if _tex.has(key): return _tex[key]
+static var _kind_tex := {}  # palette -> its kinds texture (8 x 4)
+static var _shader: Shader
+
+# a palette's swatches as a tiny texture: red, what each is (0 keep, 1/3 cloth, 2/3 metal, 1 skin); green, its middle brightness
+static func kinds_texture(tex: String) -> Texture2D:
+	if _kind_tex.has(tex): return _kind_tex[tex]
 	var src := _src_image(tex)
-	var img: Image = src.duplicate()
 	var kinds := _swatch_kinds(tex)
-	var w := img.get_width(); var h := img.get_height()
-	var mc: Color = METALS.get(metal, Color(0, 0, 0, 0))
-	var sk: Color = SKIN_TONES[clampi(skin, 0, SKIN_TONES.size() - 1)]
-	# clothes turn by the hue, saturation and brightness that take the palette's main cloth color to the wanted one,
-	# so trims and second colors stay apart from it
-	var main := Color(0, 0, 0, 0)
-	for i in kinds.size():
-		if kinds[i] == "cloth": main = src.get_pixel(int(((i % 8) + 0.5) * w / 8.0), int(((i / 8) + 0.5) * h / 4.0)); break
+	var w := src.get_width(); var h := src.get_height()
+	var img := Image.create(8, 4, false, Image.FORMAT_RGBA8)
 	for row in 4:
 		for col in 8:
 			var kind := kinds[row * 8 + col]
-			var to := Color(0, 0, 0, 0)
-			var hsv := false
-			if kind == "cloth" and cloth.a > 0.0 and main.a > 0.0: hsv = true
-			elif kind == "metal" and mc.a > 0.0: to = mc
-			elif kind == "skin": to = sk
-			if to.a == 0.0 and not hsv: continue
-			var x0 := int(col * w / 8.0); var x1 := int((col + 1) * w / 8.0)
-			var y0 := int(row * h / 4.0); var y1 := int((row + 1) * h / 4.0)
-			var mid := src.get_pixel((x0 + x1) / 2, (y0 + y1) / 2)
-			var ml := maxf(0.05, mid.get_luminance())
-			var dh := cloth.h - main.h
-			var ks := cloth.s / maxf(0.05, main.s)
-			var kv := cloth.v / maxf(0.05, main.v)
-			for y in range(y0, y1):
-				for x in range(x0, x1):
-					var p := src.get_pixel(x, y)
-					if hsv:
-						img.set_pixel(x, y, Color.from_hsv(fposmod(p.h + dh, 1.0), clampf(p.s * ks, 0.0, 1.0), clampf(p.v * kv, 0.0, 1.0)))
-					else:
-						var g := clampf(p.get_luminance() / ml, 0.0, 1.8)
-						img.set_pixel(x, y, Color(minf(1.0, to.r * g), minf(1.0, to.g * g), minf(1.0, to.b * g), 1.0))
-	img.generate_mipmaps()
+			var code := {"cloth": 1.0 / 3.0, "metal": 2.0 / 3.0, "skin": 1.0}.get(kind, 0.0) as float
+			var mid := src.get_pixel(int((col + 0.5) * w / 8.0), int((row + 0.5) * h / 4.0))
+			img.set_pixel(col, row, Color(code, mid.get_luminance(), 0.0, 1.0))
 	var t := ImageTexture.create_from_image(img)
-	_tex[key] = t
+	_kind_tex[tex] = t
 	return t
+
+# the main cloth color of a palette (the first cloth swatch)
+static func _main_cloth(tex: String) -> Color:
+	var src := _src_image(tex)
+	var kinds := _swatch_kinds(tex)
+	for i in kinds.size():
+		if kinds[i] == "cloth": return src.get_pixel(int(((i % 8) + 0.5) * src.get_width() / 8.0), int(((i / 8) + 0.5) * src.get_height() / 4.0))
+	return Color(0, 0, 0, 0)
 
 static func material_for(tex: String, cloth: Color, metal: String, skin: int) -> Material:
 	var key := "%s|%s|%s|%d" % [tex, _ckey(cloth), metal, skin]
 	if _mat.has(key): return _mat[key]
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = texture_for(tex, cloth, metal, skin)
-	m.roughness = 0.62; m.metallic = 0.0; m.metallic_specular = 0.35
-	m.rim_enabled = true; m.rim = 0.18; m.rim_tint = 0.6
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	if _shader == null: _shader = load("res://shaders/character.gdshader")
+	var m := ShaderMaterial.new()
+	m.shader = _shader
+	var pal = load(GEAR_DIR + tex + "_texture.png")
+	m.set_shader_parameter("tex", pal)
+	m.set_shader_parameter("kinds", kinds_texture(tex))
+	var main := _main_cloth(tex)
+	if cloth.a > 0.0 and main.a > 0.0:
+		m.set_shader_parameter("cloth_on", true)
+		m.set_shader_parameter("cloth", Vector3(cloth.h - main.h, cloth.s / maxf(0.05, main.s), cloth.v / maxf(0.05, main.v)))
+	var mc: Color = METALS.get(metal, Color(0, 0, 0, 0))
+	m.set_shader_parameter("metal", Vector4(mc.r, mc.g, mc.b, 1.0 if mc.a > 0.0 else 0.0))
+	var sk: Color = SKIN_TONES[clampi(skin, 0, SKIN_TONES.size() - 1)]
+	m.set_shader_parameter("skin", Vector4(sk.r, sk.g, sk.b, 1.0))
 	_mat[key] = m
 	return m
 

@@ -44,7 +44,7 @@ func setup(lk: Dictionary, h := 1.8) -> Avatar:
 	look = lk; height = h
 	base = Skins.BASES.get(lk.get("base", "knight"), Skins.BASES.knight)
 	fam = base.fam
-	model = (load(base.file) as PackedScene).instantiate()
+	model = ModelUtil.scene(base.file).instantiate()
 	add_child(model)
 	skel = model.find_children("*", "Skeleton3D", true, false)[0] if model.find_children("*", "Skeleton3D", true, false).size() > 0 else null
 	ap = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
@@ -78,15 +78,25 @@ func _dress_kk():
 			var p := mi.get_parent()
 			if p is BoneAttachment3D: p.queue_free()
 			else: mi.queue_free()
-	var mat := Skins.material_for(base.tex, look.get("cloth", Color(0, 0, 0, 0)), look.get("metal", ""), int(look.get("skin", 0)))
+	var cloth: Color = look.get("cloth", Color(0, 0, 0, 0)); var metal: String = look.get("metal", ""); var skin := int(look.get("skin", 0))
+	var mat := Skins.material_for(base.tex, cloth, metal, skin)
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).material_override = mat
+	# held things from the gear folder keep their own palette (painted with the same colors)
 	for e in extra:
 		if skel == null or skel.find_bone(e[1]) < 0: continue
 		var ba := BoneAttachment3D.new(); ba.bone_name = e[1]; skel.add_child(ba)
-		var gn: Node3D = (load(Skins.GEAR_DIR + Skins.GEAR[e[0]] + ".gltf") as PackedScene).instantiate()
+		var gn: Node3D = ModelUtil.scene(Skins.GEAR_DIR + Skins.GEAR[e[0]] + ".gltf").instantiate()
 		ba.add_child(gn)
-		if e[1] == "handslot.l": gn.rotation = Vector3(0, 0, 0)
-	for m in model.find_children("*", "MeshInstance3D", true, false):
-		(m as MeshInstance3D).material_override = mat
+		for m in gn.find_children("*", "MeshInstance3D", true, false):
+			var mi := m as MeshInstance3D
+			var pal := base.tex as String
+			var om := mi.mesh.surface_get_material(0) if mi.mesh else null
+			if om is BaseMaterial3D and (om as BaseMaterial3D).albedo_texture:
+				var path := (om as BaseMaterial3D).albedo_texture.resource_path.get_file()
+				for tname in ["knight", "barbarian", "mage", "rogue"]:
+					if path.begins_with(tname): pal = tname
+			mi.material_override = Skins.material_for(pal, cloth, metal, skin)
 
 # scale to the wanted height, feet on the ground
 func _fit():

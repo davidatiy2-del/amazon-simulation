@@ -66,7 +66,9 @@ func _process(dt: float):
 	# who is near: sorted by distance, the closest get puppets
 	var near: Array = []
 	var far2 := far_dist * far_dist
+	var nd2 := near_dist * near_dist
 	var vis: Array = []
+	var close: Array = []
 	for it in items:
 		var p: Vector3 = it[2]
 		var d2 := cp.distance_squared_to(p)
@@ -74,11 +76,12 @@ func _process(dt: float):
 		# behind the camera and not close: skip
 		if d2 > 100.0 and (p - cp).dot(fwd) < -6.0: continue
 		vis.append([d2, it])
-	vis.sort_custom(func(a, b): return a[0] < b[0])
+		if d2 <= nd2: close.append([d2, it])
+	# only the close ones need sorting: the nearest of them get full models
+	close.sort_custom(func(a, b): return a[0] < b[0])
 	var keep := {}
-	var nd2 := near_dist * near_dist
 	var made := 0
-	for e in vis:
+	for e in close:
 		var it: Array = e[1]
 		if near.size() >= near_max or e[0] > nd2: break
 		var ref: int = it[0]
@@ -121,7 +124,8 @@ func _process(dt: float):
 		if pose == "walk" or pose == "run": pose += "0" if fmod(t * (3.2 if pose == "run" else 2.2) * it[6] + float(it[5]), 1.0) < 0.5 else "1"
 		var mesh: Mesh = _mesh(lk, pose)
 		if mesh == null: continue
-		var bk: String = lk.shape + "|" + str(lk.mat.get_instance_id() if lk.mat else 0) + "|" + pose
+		if not lk.has("bk"): lk["bk"] = lk.shape + "|" + str(lk.mat.get_instance_id() if lk.mat else 0) + "|"
+		var bk: String = lk.bk + pose
 		if not buckets.has(bk): buckets[bk] = PackedFloat32Array(); counts[bk] = 0; _mm(bk, mesh, lk.mat)
 		var buf: PackedFloat32Array = buckets[bk]
 		var n: int = counts[bk]

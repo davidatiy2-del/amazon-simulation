@@ -237,6 +237,7 @@ func open_victory(w: War):
 	var r := _row()
 	for g in [["annex", "לספח לממלכה", "העיר, אנשיה, חצי מהזהב וחיות המלחמה שלה — שלך"], ["plunder", "לבזוז ולחזור", "כמעט כל הזהב, סוסים וחיות מלחמה הביתה"], ["tribute", "להטיל מס", "העיר נשארת שלהם ומשלמת לך כל יום"]]:
 		var b := _button("%s\n%s" % [g[1], g[2]], g[0] == war.goal, 300, 110)
+		b.pressed.connect(func(): if war.sound: war.sound.play("coin"))
 		b.add_theme_font_size_override("font_size", 15)
 		b.pressed.connect(func(): war.decide(g[0]); close())
 		r.add_child(b)

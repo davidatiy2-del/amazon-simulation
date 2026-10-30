@@ -65,6 +65,7 @@ func setup(city_id: String, n: int, d: Dictionary, c: Crowd, day: DayNight) -> C
 	for i in nodes.size(): astar.add_point(i, Vector3(nodes[i][0], 0, nodes[i][1]))
 	for e in d.get("edges", []): astar.connect_points(int(e[0]), int(e[1]))
 	_make_people(k.get("plan", {}))
+	_settle()
 	_make_horses(int(k.get("horses", 0)))
 	_make_beasts()
 	_make_flags()
@@ -101,27 +102,45 @@ func _make_people(plan: Dictionary):
 			p.state = "walk"
 			people.append(p)
 
+# everyone where they would be at this hour: at work, at the tavern, or at home (so the city is alive at once)
+func _settle():
+	for p: Person in people:
+		_plan(p)
+		if p.path.size() > 0:
+			p.pos = p.path[p.path.size() - 1]
+			p.pi = p.path.size()
+			# some are still on their way
+			if _rng.randf() < 0.2 and p.path.size() > 2:
+				p.pi = _rng.randi_range(1, p.path.size() - 1)
+				p.pos = p.path[p.pi - 1]
+			else:
+				_arrive(p)
+				p.t *= _rng.randf_range(0.2, 1.0)
+
 func _random_street_point() -> Vector3:
 	var nodes: Array = data.get("nodes", [])
 	if nodes.is_empty(): return center()
 	var n: Array = nodes[_rng.randi() % nodes.size()]
 	return Vector3(float(n[0]) + _rng.randf_range(-2, 2), gy, float(n[1]) + _rng.randf_range(-2, 2))
 
+# at war (not just out hunting)
+static func _gone(p: Person) -> bool: return p.state == "away" and p.goal != "hunt"
+
 func count(role: String) -> int:
 	var n := 0
-	for p: Person in people: if p.role == role and p.state != "away": n += 1
+	for p: Person in people: if p.role == role and not _gone(p): n += 1
 	return n
 
 func counts() -> Dictionary:
 	var c := {}
 	for p: Person in people:
-		if p.state == "away": continue
+		if _gone(p): continue
 		c[p.role] = c.get(p.role, 0) + 1
 	return c
 
 func population() -> int:
 	var n := 0
-	for p: Person in people: if p.state != "away": n += 1
+	for p: Person in people: if not _gone(p): n += 1
 	return n
 
 func soldiers() -> int:
@@ -177,7 +196,8 @@ func _go_spot(p: Person, kind: String, goal: String):
 	var list: Array = data.spots.get(kind, [])
 	if list.is_empty(): _go_plaza(p); return
 	var s: Array = list[(p.id + _rng.randi() % 3) % list.size()]
-	var jitter := Vector3(_rng.randf_range(-1.2, 1.2), 0, _rng.randf_range(-1.2, 1.2)) if kind in ["drink", "trade", "farm", "fish"] else Vector3.ZERO
+	var spread := 1.4 if kind in ["drink", "trade", "farm", "fish", "dock", "guard", "gate", "chop"] else 0.5
+	var jitter := Vector3(_rng.randf_range(-spread, spread), 0, _rng.randf_range(-spread, spread))
 	_walk_to(p, Vector3(float(s[0]), gy, float(s[1])) + jitter, goal, float(s[2]))
 
 func _go_home(p: Person):
@@ -453,7 +473,7 @@ func _flag_model() -> Node3D:
 		"blue", "red", "green": path = "res://assets/kaykit/town/flag_%s.gltf" % owner_f
 		"black": path = "res://assets/pirate/flag-pirate-high.glb"
 		_: path = "res://assets/kaykit/town/flag_yellow.gltf"
-	var n: Node3D = (load(path) as PackedScene).instantiate()
+	var n: Node3D = ModelUtil.scene(path).instantiate()
 	n.scale = Vector3.ONE * (4.5 if owner_f != "black" else 2.2)
 	return n
 

@@ -29,6 +29,7 @@ func _process(_dt: float):
 	if mode == "city": return _city_test()
 	if mode == "war": return _war_test()
 	if mode == "battle": return _battle_test()
+	if mode == "tour": return _tour()
 	if f == 4: snap("menu")
 	if f == 5: g._start(true); g.player.place(Vector3(70, 0, 40)); g.rig.yaw = 2.6; g.player.face = 2.6
 	if f > 5 and f < 14: g.player.move_in = Vector2(0, 1)
@@ -309,9 +310,46 @@ func _battle_test():
 		print("begin ", ok, " aboard ", g.war.men_aboard())
 	if f == 4: g.war.land(); print("landed: tally ", g.war.tally())
 	if f == 6: g.war.set_order("all", "charge"); g.player.hp = 100000.0
+	if f == 300 or f == 600:
+		# how long each system takes for one frame now (stepping them by hand)
+		var t0 := Time.get_ticks_usec(); g.war._battle(1.0 / 30.0); var t1 := Time.get_ticks_usec()
+		g.war._draw_units(); var t2 := Time.get_ticks_usec()
+		g.crowd._process(1.0 / 30.0); var t3 := Time.get_ticks_usec()
+		var tc: City = g.cities[bt_target]; tc._process(1.0 / 30.0); var t4 := Time.get_ticks_usec()
+		g.animals._process(1.0 / 30.0); var t5 := Time.get_ticks_usec()
+		print("battle %.1f ms, draw units %.1f ms, crowd %.1f ms, city %.1f ms, animals %.1f ms; items %d" % [(t1 - t0) / 1000.0, (t2 - t1) / 1000.0, (t3 - t2) / 1000.0, (t4 - t3) / 1000.0, (t5 - t4) / 1000.0, g.crowd.items.size()])
 	if f > 6 and f % 150 == 0:
 		var lost_n := 0
 		for k in g.war.lost: lost_n += int(g.war.lost[k])
-		print("t=%ds tally %s gate %d morale %d/%d lost %d killed %d state %s" % [f / 30, g.war.tally(), int(g.war.gate_hp), int(g.war.morale[0]), int(g.war.morale[1]), lost_n, g.war.killed, g.war.state])
+		print("t=%ds tally %s gate %d morale %d/%d lost %d killed %d state %s  process %.1f ms" % [f / 30, g.war.tally(), int(g.war.gate_hp), int(g.war.morale[0]), int(g.war.morale[1]), lost_n, g.war.killed, g.war.state, Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
 		if g.war.state != "battle": print("outcome after ", f / 30, " s"); get_tree().quit()
 	if f > 3600: print("no outcome after 120 s"); get_tree().quit()
+
+# the menu, then a few views of the city with its people
+func _tour():
+	if f == 8: snap("t0_menu")
+	if f == 9: g._start(true); g.dn.time = 16.5; g.dn.apply()
+	var h: City = g.cities.get("home") if g.cities.has("home") else null
+	if f == 14:
+		g.rig.set_process(false)
+		var c := h.center()
+		g.rig.cam.global_position = c + Vector3(-70, 55, 125); g.rig.cam.look_at(c + Vector3(0, 0, 10))
+	if f == 18: snap("t1_city_air")
+	if f == 19:
+		var pl: Array = h.data.plaza
+		var c := Vector3(float(pl[0]), h.gy, float(pl[1]))
+		g.player.place(c + Vector3(0, 0, -30))
+		g.rig.cam.global_position = c + Vector3(22, 9, -26); g.rig.cam.look_at(c + Vector3(-4, 0, 8))
+	if f == 26: snap("t2_plaza_low")
+	if f == 27:
+		var tr: Array = h.data.train
+		var c := Vector3(float(tr[0]), h.gy, float(tr[1]))
+		g.player.place(c + Vector3(0, 0, 25))
+		g.rig.cam.global_position = c + Vector3(-14, 8, 20); g.rig.cam.look_at(c)
+	if f == 34: snap("t3_training")
+	if f == 35:
+		var b: Boat = g.fleet[0]
+		g.player.place(Vector3(b.position.x - 20, 0, b.position.z - 50))
+		g.rig.cam.global_position = b.position + Vector3(-50, 18, -45); g.rig.cam.look_at(b.position + Vector3(10, 0, 0))
+	if f == 40: snap("t4_fleet")
+	if f == 41: get_tree().quit()

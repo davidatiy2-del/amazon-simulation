@@ -44,10 +44,23 @@ static func body_bounds(root: Node) -> AABB:
 	for p in pts: bb = bb.expand(p)
 	return bb
 
+static var _scenes := {}   # path -> PackedScene, kept loaded: each model is read from the disk once
+
+# a model's scene, loaded once and kept (a scene nobody holds is dropped, and the next one would wait for the disk)
+static func scene(path: String) -> PackedScene:
+	var s: PackedScene = _scenes.get(path, null)
+	if s == null:
+		s = load(path) as PackedScene
+		_scenes[path] = s
+	return s
+
+static func keep(path: String, r: Resource) -> void:
+	if r is PackedScene: _scenes[path] = r
+
 # a model, scaled so its body is `size` meters along `axis` (1: height, 2: length), standing on y = 0, inside a holder
 static func make(path: String, size: float, axis := 1) -> Node3D:
 	var holder := Node3D.new()
-	var n: Node3D = load(path).instantiate()
+	var n: Node3D = scene(path).instantiate()
 	holder.add_child(n)
 	var bb := body_bounds(n)
 	var k := size / maxf(0.001, bb.size[axis])

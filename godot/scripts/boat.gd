@@ -45,7 +45,7 @@ signal said(text: String)
 
 func setup(k: String, h: HeightData, pos: Vector3, y: float):
 	kind = k; K = KINDS[k]; hd = h
-	model = (load(K.model) as PackedScene).instantiate()
+	model = ModelUtil.scene(K.model).instantiate()
 	model.scale = Vector3.ONE * float(K.scale)
 	model.position.y = -float(K.sink)
 	add_child(model)

@@ -83,6 +83,7 @@ var loot := {"gold": 0.0, "horses": 0, "beasts": {}}
 var tribute := {}               # city -> gold a day
 var sallied := false
 var on_player := 0              # how many enemies go for the chief now
+var sound: Sound
 
 func _ready():
 	var am := CylinderMesh.new(); am.top_radius = 0.02; am.bottom_radius = 0.02; am.height = 0.9; am.radial_segments = 4; am.rings = 1
@@ -152,6 +153,7 @@ func begin(cid: String, want: Dictionary, beasts: Dictionary, g: String) -> bool
 	var tc := target_city()
 	gate_max = 2400.0 if tc.data.get("style", "") == "kk" else (1800.0 if tc.data.get("style", "") == "pirate" else 900.0)
 	gate_hp = gate_max; gate_open = false
+	if sound: sound.play("confirm")
 	said.emit("הצבא עולה על הספינות: %s. עלה על ספינת המלחמה והפלג אל %s — הצי ילך אחריך" % [_force_text(force, beasts_sent), tc.name_he()])
 	changed.emit()
 	return true
@@ -194,6 +196,7 @@ func _process(dt: float):
 	_arrows(dt)
 	_balls(dt)
 	_draw_units()
+	if sound: sound.battle(state == "battle")
 
 # the ship the chief is on leads; the others take their places behind it
 func _fleet_lead():
@@ -256,8 +259,8 @@ func land():
 				u.horse_key = "horse_blue_%d" % (i % Kingdoms.HORSE_COLORS.size())
 				if not crowd.looks.has(u.horse_key): crowd.register(u.horse_key, Kingdoms.horse_def(i % Kingdoms.HORSE_COLORS.size(), Kingdoms.FACTIONS.blue.color))
 				u.speed = 6.5; u.hp *= 1.25; u.max_hp = u.hp; u.radius = 0.9
-			var col := n % 16; var row := n / 16
-			u.pos = _dry(lp + right * (col - 7.5) * 1.6 + to_city * row * 1.9)
+			var col := n % 24; var row := n / 24
+			u.pos = _dry(lp + right * (col - 11.5) * 1.5 + to_city * (row * 1.8 - 2.0))
 			u.yaw = face
 			n += 1
 	for kind in beasts_sent:
@@ -268,11 +271,16 @@ func land():
 	_assign_slots()
 	for k in orders: orders[k] = "follow"
 	# the chief comes ashore too
-	if player.boat: game.leave_boat_to(_dry(lp + to_city * (float(n / 16) * 1.9 + 4.0)))
+	# the chief stands in front of his army, but not right at the enemy's gate
+	var front := lp + to_city * 3.0
+	var gp := _gate_point(true)
+	if Vector2(front.x - gp.x, front.z - gp.z).length() < 10.0: front = gp - to_city * 10.0
+	if player.boat: game.leave_boat_to(_dry(front))
 	player.face = face
 	_defenders(tc)
 	landed = true
 	state = "battle"
+	if sound: sound.play("land"); sound.play("confirm", Vector3.INF, -4.0)
 	said.emit("נחתנו! %d לוחמים על החוף. הפקודות למטה: אחריי, להסתער, לעמוד, חומת מגנים, לפרוץ את השער" % n)
 	changed.emit()
 
@@ -430,6 +438,21 @@ func _build_grid():
 		if not grid.has(k): grid[k] = []
 		grid[k].append(u)
 
+# the nearest enemy, looking close first and farther only when no one is close
+func _find(u: Unit, r: float) -> Unit:
+	var o := _nearest_enemy(u, minf(r, 18.0))
+	if o or r <= 18.0: return o
+	o = _nearest_enemy(u, minf(r, 50.0))
+	if o or r <= 50.0: return o
+	# far: through the list (cheaper than the grid at this range)
+	var best: Unit = null; var bd := r * r
+	for v: Unit in units:
+		if v.side == u.side or v.state == "dead" or v.state == "aboard": continue
+		if v.on_wall and u.range <= 0.0: continue
+		var d := u.pos.distance_squared_to(v.pos)
+		if d < bd: bd = d; best = v
+	return best
+
 # the nearest enemy within r meters
 func _nearest_enemy(u: Unit, r: float) -> Unit:
 	var best: Unit = null; var bd := r * r
@@ -465,9 +488,12 @@ func _think_ours(u: Unit, dt: float):
 		"retreat":
 			goal_pos = _nearest_ship_landing(u.pos); engage = 0.0
 	if u.range > 0.0: engage = maxf(engage, u.range)
-	# a target
-	if u.target == null or u.target.state == "dead" or u.pos.distance_to(u.target.pos) > engage + 6.0:
-		u.target = _nearest_enemy(u, engage) if engage > 0.0 else null
+	# a target (looked for twice a second, near first)
+	if u.target and (u.target.state == "dead" or u.target.state == "aboard" or u.pos.distance_to(u.target.pos) > engage + 6.0): u.target = null
+	if u.target == null and engage > 0.0 and u.t <= 0.0:
+		u.t = randf_range(0.35, 0.6)
+		u.target = _find(u, engage)
+	u.t -= dt
 	var at_gate := false
 	if u.target and o == "charge" and _behind_walls(u, u.target) and u.range <= 0.0:
 		goal_pos = _gate_point(true); u.target = null
@@ -502,8 +528,11 @@ func _think_theirs(u: Unit, dt: float, tc: City):
 		var door: Array = cs.get("door", [tc.center().x, tc.center().z])
 		_move_to(u, Vector3(float(door[0]), tc.gy, float(door[1])), dt, true)
 		return
-	if u.target == null or u.target.state == "dead" or u.pos.distance_to(u.target.pos) > sight + 6.0:
-		u.target = _nearest_enemy(u, sight)
+	if u.target and (u.target.state == "dead" or u.target.state == "aboard" or u.pos.distance_to(u.target.pos) > sight + 6.0): u.target = null
+	if u.target == null and u.t <= 0.0:
+		u.t = randf_range(0.35, 0.6)
+		u.target = _find(u, sight)
+	u.t -= dt
 	# the player is a target too (but no more than a few go for him at once)
 	var pd := u.pos.distance_to(player.global_position)
 	var chase_player := not player.is_dead() and pd < minf(sight, 18.0) and (u.target == null or pd < u.pos.distance_to(u.target.pos))
@@ -555,7 +584,9 @@ func _open_gate(broken: bool):
 	gate_open = true
 	var tc := target_city()
 	tc.set_shut(false)
-	if broken: said.emit("השער נפרץ! קדימה, אל העיר!")
+	if broken:
+		said.emit("השער נפרץ! קדימה, אל העיר!")
+		if sound: sound.play("big_kill"); sound.play("impact")
 
 func _nearest_ship_landing(p: Vector3) -> Vector3:
 	var best := p; var bd := 1e9
@@ -633,6 +664,7 @@ func _fight(u: Unit, o: Unit, dt: float):
 			o.pos += fw * 2.4
 		_damage(o, dmg, u)
 		u.move = _attack_move(u)
+		if sound: sound.play("hit", u.pos, -6.0, 0.11)
 	elif u.cool > 0.6:
 		pass
 	else:
@@ -682,6 +714,7 @@ func _damage(o: Unit, dmg: float, by: Unit):
 	if o.hp <= 0.0:
 		o.hp = 0.0; o.state = "dead"; o.dead_t = 0.0
 		o.move = "die"
+		if sound: sound.play("kill" if not o.beast else "downed", o.pos, -4.0, 0.15)
 		if o.side == 0:
 			var k := group_of(o) if not o.beast else o.kind
 			lost[k] = lost.get(k, 0) + 1
@@ -689,7 +722,9 @@ func _damage(o: Unit, dmg: float, by: Unit):
 		else:
 			killed += 1
 			morale[1] = maxf(0.0, morale[1] - (1.2 if o != chief else 60.0))
-			if o == chief: said.emit("%s נפל!" % _who(o))
+			if o == chief:
+				said.emit("%s נפל!" % _who(o))
+				if sound: sound.play("boss")
 
 # ---------------------------------------------------------------- arrows and cannonballs
 func _shoot(u: Unit, o: Unit):
@@ -698,6 +733,7 @@ func _shoot(u: Unit, o: Unit):
 	var flight := clampf(from.distance_to(to) / 26.0, 0.25, 1.4)
 	var mi := MeshInstance3D.new(); mi.mesh = arrow_mesh; add_child(mi)
 	mi.global_position = from
+	if sound: sound.play("shoot", from, -8.0, 0.12)
 	arrows.append({"node": mi, "from": from, "to": to, "t": 0.0, "T": flight, "target": o, "player": o == null, "dmg": u.dmg * randf_range(0.8, 1.15), "side": u.side})
 
 func _arrows(dt: float):
@@ -803,6 +839,7 @@ func _victory(why: String):
 	for u: Unit in units:
 		if u.side == 1 and u.state != "dead": u.state = "aboard"   # (they lay down their arms)
 	said.emit("ניצחון! %s. %s נכבשה — בחר מה לעשות בה" % [why, tc.name_he()])
+	if sound: sound.play("level_up")
 	won.emit(target)
 	changed.emit()
 

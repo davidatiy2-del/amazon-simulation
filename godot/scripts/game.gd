@@ -37,6 +37,7 @@ var day_last := -1
 var look: Dictionary = {}      # the chief's look
 var pending_fresh := false
 var shot_mode := ""
+var sound: Sound
 
 func _ready():
 	_keys()
@@ -61,6 +62,7 @@ func _ready():
 	look = _look_from(cfg.get("look", {}))
 	hud.quality = quality
 	ResourceLoader.load_threaded_request(WORLD)
+	for wp in warm_paths(): if ResourceLoader.exists(wp): ResourceLoader.load_threaded_request(wp)
 	dn = DayNight.new(); dn.running = false; add_child(dn)
 	if OS.get_cmdline_user_args().has("auto"): add_child(load("res://tools/autoplay.gd").new())
 
@@ -197,8 +199,37 @@ func _air(dt: float):
 	var far0: float = {"high": 900.0, "med": 600.0, "low": 380.0}[quality]
 	rig.cam.far = lerpf(far0, maxf(far0, 1300.0 if quality != "low" else 800.0), sea_k)
 
+# the models of people, their gear, horses, beasts and flags: loaded with the world and kept, so nobody waits for a
+# disk read in the middle of a battle
+static func warm_paths() -> Array:
+	var out := []
+	for k in Skins.BASES: out.append(Skins.BASES[k].file)
+	for g in Skins.GEAR.values(): out.append(Skins.GEAR_DIR + str(g) + ".gltf")
+	for b in Kingdoms.BEASTS.values(): out.append(b.model)
+	out.append(Kingdoms.horse_def(0, Color(0, 0, 0, 0)).model)
+	for f in ["blue", "red", "green", "yellow"]: out.append("res://assets/kaykit/town/flag_%s.gltf" % f)
+	out.append("res://assets/pirate/flag-pirate-high.glb")
+	return out
+
+# one of each body drawn for a few frames out of sight, under the city's ground in front of the menu's camera,
+# so the graphics card prepares their shaders now and not when the first of them comes near
+func _warm_draw(at: Vector3):
+	var holder := Node3D.new(); add_child(holder)
+	var defs: Array = []
+	for k in Skins.BASES: defs.append(Skins.look(k, {"helmet": true, "cape": true, "weapon": "sword" if Skins.is_kk(k) else "spear", "shield": "shield_round" if Skins.is_kk(k) else ""}))
+	for b in Kingdoms.BEASTS: defs.append(Kingdoms.beast_def(b))
+	defs.append(Kingdoms.horse_def(0, Color(0.7, 0.1, 0.1)))
+	for i in defs.size():
+		var d: Dictionary = defs[i]
+		var n: Node3D = AnimalPuppet.new().setup(d) if d.get("type", "") == "animal" else Avatar.new().setup(d, 1.8)
+		holder.add_child(n)
+		n.position = at + Vector3((i % 6) * 3.0 - 7.5, 0, (i / 6) * 3.0)
+	for k in 4: await get_tree().process_frame
+	holder.queue_free()
+
 func _build():
 	hud.set_loading("כמעט מוכן…")
+	for wp in warm_paths(): if ResourceLoader.exists(wp): ModelUtil.keep(wp, ResourceLoader.load_threaded_get(wp))
 	var w := world.get_node_or_null("Water") as MeshInstance3D
 	if w: water_mat = w.material_override as ShaderMaterial
 	crowd = Crowd.new(); add_child(crowd)
@@ -207,6 +238,7 @@ func _build():
 	player.died.connect(_on_died)
 	rig = CameraRig.new(); rig.target = player; add_child(rig)
 	crowd.cam = rig.cam
+	sound = Sound.new(); add_child(sound); sound.cam = rig.cam
 	animals = Animals.new(); animals.day_night = dn; add_child(animals)
 	sea = SeaLife.new(); add_child(sea)
 	sea.said.connect(func(t): if t != "": hud.msg(t))
@@ -222,13 +254,19 @@ func _build():
 	sea.ship = ship
 	war = War.new(); war.game = self; war.crowd = crowd; war.cities = cities; war.fleet = fleet; war.player = player; add_child(war)
 	war.said.connect(func(t): hud.msg(t))
+	war.sound = sound
 	war.won.connect(func(_c): await get_tree().create_timer(1.6).timeout; _show_victory())
 	_apply_quality()
 	# behind the menu: your city and its harbor at sunrise, from the beach
 	var h: City = cities.get("home")
 	if h:
 		var lp := Vector3(float(h.data.landing[0]), 0, float(h.data.landing[1]))
-		player.place(lp + Vector3(30, 0, 22)); rig.yaw = PI + 0.5; rig.pitch = -0.08
+		player.place(lp + Vector3(0, 0, -20))
+		rig.set_process(false)
+		rig.cam.global_position = lp + Vector3(85, 20, 105)
+		rig.cam.look_at(h.center() + Vector3(-15, 10, 30))
+		var wat := h.center() + Vector3(-15, 0, 30); wat.y = h.gy - 7.0
+		_warm_draw(wat)
 	dn.time = 6.9; dn.apply()
 	player.visible = false
 	hud.has_save = FileAccess.file_exists(SAVE)
@@ -348,6 +386,7 @@ func _start(fresh: bool):
 	sea.clear_all()
 	sea.player = player
 	player.visible = true
+	rig.set_process(true)
 	dn.running = true
 	playing = true
 	touch.visible = true
@@ -456,13 +495,16 @@ func _respawn():
 
 # ---- what the chief does to the world ----
 func player_strike(from: Vector3, fwd: Vector3, reach: float, dmg: float):
-	if war.player_strike(from, fwd, reach, dmg): rig.shake = 0.3; return
+	if war.player_strike(from, fwd, reach, dmg): rig.shake = 0.3; sound.play("hit"); return
 	var hit := animals.strike(from, fwd, reach, dmg)
 	if hit:
 		rig.shake = 0.35
+		sound.play("hit")
 		if hit.is_dead(): hud.msg("צדת " + hit.kind.name + ". אפשר לאכול")
 
-func on_player_hurt(): hud.flash_hurt()
+func on_player_hurt():
+	hud.flash_hurt()
+	sound.play("hurt", Vector3.INF, -3.0, 0.4)
 
 func corpse_near(p: Vector3, r: float) -> Node3D:
 	return animals.corpse_near(p, r)
@@ -508,7 +550,7 @@ func do_action(a: Dictionary):
 			else:
 				war.morale[1] = minf(100.0, war.morale[1] + 8.0)
 				hud.msg("%s: \"לעולם לא!\" — הם עדיין חזקים מדי. החלש אותם קודם" % Kingdoms.FACTIONS.get(tc.owner_f, {}).get("chief", "המנהיג"))
-		"take_horse": _take_horse()
+		"take_horse": _take_horse(); sound.play("step")
 		"return_horse":
 			var hz := player.horse
 			dismount()
@@ -521,6 +563,7 @@ func do_action(a: Dictionary):
 			player.food = 100.0; player.water = 100.0; player.hp = minf(100.0, player.hp + 25.0)
 			player._play("cheer", 0.15, 1.0, true)
 			hud.msg("אכלת ושתית בבית המרזח. לחיים, ראש השבט!")
+			sound.play("coin", Vector3.INF, -6.0)
 		"well":
 			player.water = 100.0
 			player._play("interact", 0.15)

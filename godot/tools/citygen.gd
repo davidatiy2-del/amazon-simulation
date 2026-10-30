@@ -239,7 +239,7 @@ func _kk_city(id: String, name: String, color: String, sea_dir: float, gate_u: f
 	for i in 4:   # market stalls around the plaza's edge
 		var su := plaza.x - 12.0 + i * 8.0
 		_put(PIRATE + "structure.glb", su, plaza.y + 9.0, PI, 0.42, "stall", true, 0.2)
-		_put(TOWN + ["crate_A_small", "barrel", "sack", "crate_B_small"][i] + ".gltf", su + 1.2, plaza.y + 9.6, 0.3 * i, 1.8, "prop", false)
+		_put(TOWN + ["crate_A_small", "barrel", "sack", "crate_B_small"][i] + ".gltf", su + 1.2, plaza.y + 9.6, 0.3 * i, 5.0, "prop", false)
 		_spot("trade", su, plaza.y + 6.5, PI)
 	var market := _building("market", TOWN + "building_market_%s.gltf" % color, plaza.x - 26.0, plaza.y + 2.0, PI * 0.5, sc * 0.9)
 	_door_node(market)
@@ -283,11 +283,11 @@ func _kk_city(id: String, name: String, color: String, sea_dir: float, gate_u: f
 	_paint_rect("yard", tg.x - 12.0, tg.y - 15.0, tg.x + 12.0, tg.y + 15.0)
 	for i in 6:
 		var tu := tg.x - 9.0 + (i % 3) * 9.0; var tv := tg.y + (8.0 if i < 3 else -8.0)
-		_put(TOWN + "target.gltf", tu, tv, PI if i < 3 else 0.0, 1.6, "target", false)
+		_put(TOWN + "target.gltf", tu, tv, PI if i < 3 else 0.0, 6.0, "target", false)
 		_spot("train", tu, tv + (-2.6 if i < 3 else 2.6), 0.0 if i < 3 else PI)
-	for i in 3: _put(TOWN + "weaponrack.gltf", tg.x - 12.5, tg.y - 6.0 + i * 6.0, PI * 0.5, 1.8, "rack", false)
-	for i in 2: _put(TOWN + "tent.gltf", tg.x + 13.0, tg.y - 8.0 + i * 16.0, -PI * 0.5, 1.6, "tent", true)
-	for i in 8: _spot("drill", tg.x - 6.0 + (i % 4) * 4.0, tg.y - 2.0 + int(i / 4) * 4.0, 0.0)
+	for i in 3: _put(TOWN + "weaponrack.gltf", tg.x - 12.5, tg.y - 6.0 + i * 6.0, PI * 0.5, 6.0, "rack", false)
+	for i in 2: _put(TOWN + "tent.gltf", tg.x + 13.0, tg.y - 8.0 + i * 16.0, -PI * 0.5, 4.5, "tent", true)
+	for i in 24: _spot("drill", tg.x - 8.0 + (i % 6) * 3.2, tg.y - 5.0 + int(i / 6) * 3.0, 0.0 if (i / 6) % 2 == 0 else PI)
 	for i in 4: _spot("archer", mil.position.x + 3.0, mil.position.y + 16.0 + i * 3.0, -PI * 0.5)
 	_link_world(W(tg.x, tg.y))
 	C["train"] = [W(tg.x, tg.y).x, W(tg.x, tg.y).y]
@@ -329,7 +329,7 @@ func _kk_city(id: String, name: String, color: String, sea_dir: float, gate_u: f
 				if rng.randf() < 0.45:
 					var side2 := rng.randf_range(-1.0, 1.0) * 4.0
 					var pp: Vector2 = hpos + face * 5.2 + Vector2(face.y, -face.x) * side2
-					_put(TOWN + ["barrel", "crate_A_small", "sack", "wheelbarrow", "bucket_water"][rng.randi() % 5] + ".gltf", pp.x, pp.y, rng.randf() * TAU, 1.9, "prop", false)
+					_put(TOWN + ["barrel", "crate_A_small", "sack", "wheelbarrow", "bucket_water"][rng.randi() % 5] + ".gltf", pp.x, pp.y, rng.randf() * TAU, 5.0, "prop", false)
 			t += 11.0
 	# gardens: trees and bushes in what is left inside
 	var trees := ["CommonTree_1", "CommonTree_3", "Bush_Common_Flowers", "Bush_Common", "CommonTree_2"]
@@ -369,7 +369,7 @@ func _kk_city(id: String, name: String, color: String, sea_dir: float, gate_u: f
 		if absf(du - gate_u) < 6.0: continue
 		var gp := W(du, dv)
 		if _ground(gp.x, gp.y) < 0.35: continue
-		_put(TOWN + ["barrel", "crate_long_A", "crate_A_small", "sack", "barrel"][rng.randi() % 5] + ".gltf", du, dv, rng.randf() * TAU, 2.0, "prop", true, 0.1, _ground(gp.x, gp.y))
+		_put(TOWN + ["barrel", "crate_long_A", "crate_A_small", "sack", "barrel"][rng.randi() % 5] + ".gltf", du, dv, rng.randf() * TAU, 5.0, "prop", true, 0.1, _ground(gp.x, gp.y))
 	for i in 6: _spot("fish", gate_u - 30.0 + i * 12.0, hd + 30.0, 0.0)
 	for i in 6: _spot("dock", gate_u - 15.0 + i * 6.0, hd + 20.0, 0.0)
 	for g in C.gates:
@@ -412,7 +412,7 @@ func _stables(a: Vector2, b: Vector2, color: String) -> Dictionary:
 	# hay and troughs
 	for i in 3:
 		_put(TOWN + "building_grain.gltf", u0 + 6.0 + i * 5.0, v0 + 5.0, 0.0, 0.45, "hay", false)
-		_put(TOWN + "bucket_water.gltf", u1 - 6.0 - i * 4.0, v0 + 4.0, 0.0, 2.5, "trough", false)
+		_put(TOWN + "bucket_water.gltf", u1 - 6.0 - i * 4.0, v0 + 4.0, 0.0, 5.0, "trough", false)
 	# the stalls: horses stand here
 	var slots := []
 	var cols := maxi(2, int((u1 - u0 - 8.0) / 5.0)); var rows := maxi(2, int((barn_v - 6.0 - v0 - 6.0) / 5.0))
@@ -532,7 +532,7 @@ func _tribal_city() -> Dictionary:
 	for i in 10:
 		var a := rng.randf() * TAU; var rr := rng.randf_range(R * 0.55, R * 0.72)
 		var u := cos(a) * rr; var v := sin(a) * rr
-		_put(["res://assets/nf/campfire.glb", TOWN + "barrel.gltf", TOWN + "sack.gltf"][i % 3], u, v, rng.randf() * TAU, [1.6, 1.8, 1.8][i % 3], "prop", false)
+		_put(["res://assets/nf/campfire.glb", TOWN + "barrel.gltf", TOWN + "sack.gltf"][i % 3], u, v, rng.randf() * TAU, [1.6, 5.0, 5.0][i % 3], "prop", false)
 	# pens for the war beasts: raptors inside the palisade, the big ones outside by the inland gate
 	var pens := []
 	for pdef: Array in [[Vector2(-R * 0.62, R * 0.05), 9.0, "raptor"], [Vector2(R * 0.62, R * 0.05), 9.0, "raptor"], [Vector2(0, -R - 26.0), 15.0, "big"]]:
