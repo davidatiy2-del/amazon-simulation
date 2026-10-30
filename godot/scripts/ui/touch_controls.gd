@@ -14,6 +14,7 @@ var look_delta := Vector2.ZERO
 var run_on := false
 var buttons := {}          # action -> {pos, r, label, down_id}
 var act_label := ""
+var labels := {}           # action -> a label in place of the usual one ("" hides the button)
 var font: Font
 const STICK_R := 70.0
 
@@ -35,10 +36,14 @@ func _layout():
 	}
 	queue_redraw()
 
+func _label_of(k: String) -> String:
+	if k == "act": return act_label
+	return labels.get(k, buttons[k].label)
+
 func _button_at(p: Vector2) -> String:
 	for k in buttons:
 		var b: Dictionary = buttons[k]
-		if k == "act" and act_label == "": continue
+		if _label_of(k) == "": continue
 		if p.distance_to(b.pos) < b.r * 1.15: return k
 	return ""
 
@@ -85,6 +90,14 @@ func take_look() -> Vector2:
 func set_act(label: String):
 	if label != act_label: act_label = label; queue_redraw()
 
+# a button's label for now: "" hides it, null brings back its own
+func set_label(k: String, label) -> void:
+	var cur = labels.get(k, null)
+	if cur == label: return
+	if label == null: labels.erase(k)
+	else: labels[k] = label
+	queue_redraw()
+
 func _draw():
 	if stick_id != -1:
 		draw_circle(stick_origin, STICK_R, Color(1, 1, 1, 0.12))
@@ -96,7 +109,7 @@ func _draw():
 		draw_circle(hint, 26.0, Color(1, 1, 1, 0.12))
 	for k in buttons:
 		var b: Dictionary = buttons[k]
-		var label: String = act_label if k == "act" else b.label
+		var label: String = _label_of(k)
 		if label == "": continue
 		var on: bool = b.id != -1 or (k == "run" and run_on)
 		draw_circle(b.pos, b.r, Color(0.08, 0.12, 0.06, 0.55) if not on else Color(0.95, 0.75, 0.3, 0.6))

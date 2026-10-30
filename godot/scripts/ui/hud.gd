@@ -1,7 +1,8 @@
 class_name Hud
 extends Control
-# The hunter's state at the top right (health, food, water, energy), the time of day, messages, and the screens:
-# loading, the start menu, pause and death.
+# The hunter's state at the top right (health, food, water, energy; the ship's hull when aboard), the time of day,
+# the whales he has taken, the way to the other harbor when at sea, messages, and the screens: loading, the start
+# menu, pause and death.
 signal start_pressed(fresh: bool)
 signal resume_pressed
 signal quality_changed(q: String)
@@ -9,6 +10,9 @@ signal quality_changed(q: String)
 var bars := {}
 var clock: Label
 var fps: Label
+var trophies: Label
+var nav: Label
+var hull_row: HBoxContainer
 var feed: VBoxContainer
 var hurt_rect: ColorRect
 var screens := {}
@@ -27,7 +31,7 @@ func _ready():
 	box.set_anchors_preset(Control.PRESET_TOP_RIGHT); box.position = Vector2(-300, 18); box.size = Vector2(280, 10)
 	box.anchor_left = 1.0; box.anchor_right = 1.0; box.offset_left = -300; box.offset_right = -20; box.offset_top = 16
 	add_child(box)
-	for k in [["hp", "בריאות", Color(0.86, 0.27, 0.25)], ["food", "מזון", Color(0.93, 0.6, 0.25)], ["water", "מים", Color(0.3, 0.62, 0.95)], ["stam", "אנרגיה", Color(0.95, 0.85, 0.35)]]:
+	for k in [["hp", "בריאות", Color(0.86, 0.27, 0.25)], ["food", "מזון", Color(0.93, 0.6, 0.25)], ["water", "מים", Color(0.3, 0.62, 0.95)], ["stam", "אנרגיה", Color(0.95, 0.85, 0.35)], ["hull", "ספינה", Color(0.66, 0.5, 0.32)]]:
 		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10)
 		var pb := ProgressBar.new(); pb.max_value = 100; pb.show_percentage = false; pb.custom_minimum_size = Vector2(190, 14)
 		pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -38,7 +42,12 @@ func _ready():
 		var l := _label(k[1], 17); l.custom_minimum_size = Vector2(70, 0); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row.add_child(pb); row.add_child(l)
 		box.add_child(row); bars[k[0]] = pb
+		if k[0] == "hull": hull_row = row; row.visible = false
 	clock = _label("", 18); clock.position = Vector2(100, 34); add_child(clock)
+	trophies = _label("", 16, GOLD); trophies.position = Vector2(100, 80); add_child(trophies)
+	nav = _label("", 21, Color(0.85, 0.95, 1.0)); nav.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	nav.anchor_left = 0.5; nav.anchor_right = 0.5; nav.offset_left = -300; nav.offset_right = 300; nav.offset_top = 22
+	nav.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; add_child(nav)
 	fps = _label("", 13, Color(1, 1, 1, 0.5)); fps.position = Vector2(100, 60); add_child(fps)
 	feed = VBoxContainer.new(); feed.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	feed.anchor_left = 0.5; feed.anchor_right = 0.5; feed.offset_left = -300; feed.offset_right = 300; feed.offset_top = 70
@@ -84,14 +93,14 @@ func _make_screens():
 
 	c = _screen("menu", 0.35)
 	t = _label("אמזוניה", 92, GOLD); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
-	l = _label("צייד לבד בג׳ונגל, ליד הנהר. לצוד, לאכול, לשתות ולשרוד את הלילה.", 22, Color(1, 1, 1, 0.85))
+	l = _label("צייד לבד בג׳ונגל. לצוד, לשרוד את הלילה, להפליג אל העולם החדש ולצוד לווייתנים.", 22, Color(1, 1, 1, 0.85))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(l)
 	var cont := _button("להמשיך מהשמירה", true); cont.name = "Cont"; c.add_child(cont)
 	cont.pressed.connect(func(): start_pressed.emit(false))
 	var nb := _button("מסע חדש", false); nb.name = "New"; c.add_child(nb)
 	nb.pressed.connect(func(): start_pressed.emit(true))
 	c.add_child(_quality_row())
-	var note := _label("גרסת Godot ראשונה · שלב 1: הג׳ונגל, הנהר, הצייד והחיות", 16, Color(1, 1, 1, 0.55))
+	var note := _label("גרסת Godot · שלב 2: הים, הסירות, הלווייתנים והעולם החדש", 16, Color(1, 1, 1, 0.55))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(note)
 
 	c = _screen("pause", 0.55)
@@ -148,10 +157,19 @@ func msg(text: String):
 
 func update_stats(p: Player, dn: DayNight):
 	bars.hp.value = p.hp; bars.food.value = p.food; bars.water.value = p.water; bars.stam.value = p.stam
+	var on_ship := p.boat != null and p.boat.kind == "ship"
+	hull_row.visible = on_ship
+	if on_ship: bars.hull.value = p.boat.hull
 	var h := int(dn.time); var m := int((dn.time - h) * 60.0)
 	clock.text = "יום %d · %02d:%02d" % [dn.day, h, m]
 	fps.text = "%d FPS" % Engine.get_frames_per_second()
 	hurt_rect.color.a = move_toward(hurt_rect.color.a, 0.0, 0.02)
+
+func set_trophies(whales: int, oil: int):
+	trophies.text = "" if whales == 0 else "לווייתנים: %d · חביות שמן: %d" % [whales, oil]
+
+func set_nav(text: String):
+	nav.text = text
 
 func flash_hurt():
 	hurt_rect.color.a = 0.35

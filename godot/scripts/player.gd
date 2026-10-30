@@ -1,7 +1,8 @@
 class_name Player
 extends Node3D
 # The hunter: walks, runs, swims, rolls away, strikes with the spear, eats what he hunted and drinks from the river.
-# Movement is kinematic on the height map (no physics), and trunks push him aside.
+# He boards boats (then the stick steers the boat) and throws harpoons from the whaling ship.
+# Movement is kinematic on the height map (no physics); trunks push him aside, piers carry him.
 signal died(cause: String)
 signal said(text: String)
 
@@ -14,6 +15,7 @@ static var SPEAR_AXIS := 1
 static var SPEAR_SIGN := 1.0
 static var SPEAR_SHIFT := 0.35
 const SWIM_DEPTH := 1.05     # deeper than this, he swims
+const DEEP := 6.0            # deeper than this (the sea), swimming wears him out
 const FOOD_DRAIN := 100.0 / (960.0 * 1.4)
 const WATER_DRAIN := 100.0 / (960.0 * 0.9)
 
@@ -47,6 +49,9 @@ var roll_dir := Vector3.ZERO
 var anim_now := ""
 var hurt_cool := 0.0
 var starve_said := 0.0
+var boat: Boat = null            # the boat he is in
+var harpoon_cool := 0.0
+var deep_said := 0.0
 
 func _ready():
 	model = ModelUtil.make("res://assets/nf/adventurer.glb", HEIGHT)
@@ -83,6 +88,14 @@ func is_dead() -> bool: return state == "dead"
 
 # ---------- actions ----------
 func attack():
+	if boat != null:
+		if state != "move": return
+		if boat.kind != "ship": said.emit("צדים לווייתנים מספינת הציד שבנמל"); return
+		if harpoon_cool > 0.0: return
+		harpoon_cool = 1.3
+		state = "attack"; state_t = 0.0; hit_done = false
+		_play("Sword_Slash", 0.08, 1.2)
+		return
 	if state != "move" or swimming: return
 	if stam < 8.0: said.emit("אין כוח. צריך לנוח רגע"); return
 	stam -= 8.0
@@ -90,7 +103,7 @@ func attack():
 	_play("Sword_Slash", 0.08, 1.35)
 
 func roll():
-	if state != "move" or swimming or stam < 15.0: return
+	if state != "move" or swimming or boat != null or stam < 15.0: return
 	stam -= 15.0
 	state = "roll"; state_t = 0.0
 	var d := _move_dir()
@@ -104,20 +117,34 @@ func act():
 	var what := action_here()
 	if what.is_empty(): return
 	act_kind = what.kind; act_target = what.get("target")
+	# getting on and off a boat is at once
+	if act_kind == "board": game.board(act_target); return
+	if act_kind == "leave": game.leave_boat(); return
 	state = "act"; state_t = 0.0
-	if act_target: face = atan2(act_target.position.x - position.x, act_target.position.z - position.z)
+	if act_target and boat == null: face = atan2(act_target.position.x - position.x, act_target.position.z - position.z)
 	_play("Interact", 0.15)
 
-# what can be done here: {kind: "eat"/"drink", label, target}
+# what can be done here: {kind: "butcher"/"board"/"leave"/"eat"/"drink", label, target}
 func action_here() -> Dictionary:
-	if state == "dead": return {}
-	if game and game.has_method("corpse_near"):
+	if state == "dead" or game == null: return {}
+	var w: Node3D = game.dead_whale_near(boat.position if boat else position, boat.K.reach if boat else 3.0)
+	if w and (boat != null or swimming): return {"kind": "butcher", "label": "לבתר", "target": w}
+	if boat != null:
+		if absf(boat.speed) < 1.6 and game.landing_spot() != Vector3.INF: return {"kind": "leave", "label": "לרדת"}
+		return {}
+	var b: Boat = game.boat_near(position, 4.6)
+	if b: return {"kind": "board", "label": "לעלות" , "target": b}
+	if game.has_method("corpse_near"):
 		var c: Node3D = game.corpse_near(position, 2.6)
 		if c and food < 99.0: return {"kind": "eat", "label": "לאכול", "target": c}
-	if water < 99.0:
+	if water < 99.0 and _fresh_water(position.z):
 		var f := position + forward() * 1.4
 		if hd.water_depth(position.x, position.z) > 0.05 or hd.water_depth(f.x, f.z) > 0.08: return {"kind": "drink", "label": "לשתות"}
 	return {}
+
+# rivers and lakes are fresh; the sea (and the river's mouth) is salt
+static func _fresh_water(z: float) -> bool:
+	return z < 395.0 or z > 1700.0
 
 func hurt(dmg: float, cause: String, from := Vector3.INF):
 	if state == "dead" or (state == "roll" and state_t < 0.45): return
@@ -135,16 +162,27 @@ func hurt(dmg: float, cause: String, from := Vector3.INF):
 # ---------- every frame ----------
 func _move_dir() -> Vector3:
 	var f := Vector3(sin(cam_yaw), 0, cos(cam_yaw))       # camera forward on the ground
-	var r := Vector3(-f.z, 0, f.x)
-	var d := f * move_in.y - r * move_in.x
+	var r := Vector3(-f.z, 0, f.x)                        # the screen's right, on the ground
+	var d := f * move_in.y + r * move_in.x
 	return d.limit_length(1.0)
 
 func _physics_process(dt: float):
 	if dt > 0.1: dt = 0.1
 	state_t += dt
-	var depth := hd.water_depth(position.x, position.z)
+	harpoon_cool -= dt
+	if boat != null:
+		_on_boat(dt); return
+	var depth := maxf(0.0, WorldShape.WATER - hd.ground(position.x, position.z))
 	swimming = depth > SWIM_DEPTH
 	_needs(dt)
+	if swimming and depth > DEEP and state != "dead":
+		# out in the deep sea: swimming wears him out, and with no strength left he drowns
+		stam = maxf(0.0, stam - 2.6 * dt)
+		deep_said -= dt
+		if deep_said <= 0.0:
+			deep_said = 30.0; said.emit("המים כאן עמוקים: בלי סירה הכוח ייגמר")
+		if stam <= 0.0: hp -= 7.0 * dt
+		if hp <= 0.0: hp = 1.0; hurt(5.0, "טבעת בים")
 	var d := _move_dir()
 	var running := want_run and d.length() > 0.3 and stam > 1.0 and not swimming
 	match state:
@@ -182,8 +220,8 @@ func _physics_process(dt: float):
 			speed_now = 0.0
 	# trunks and the ground
 	position = hd.push_out(position, 0.35)
-	position.x = clampf(position.x, -500.0, 500.0); position.z = clampf(position.z, -500.0, 500.0)
-	var g := hd.height(position.x, position.z)
+	position = hd.clamp_pos(position)
+	var g := hd.ground(position.x, position.z)
 	if swimming:
 		vy = 0.0
 		position.y = lerpf(position.y, WorldShape.WATER - 1.25, minf(1.0, dt * 5.0))
@@ -194,8 +232,34 @@ func _physics_process(dt: float):
 	rotation.y = face
 	_spear_follow()
 
+# on board: he stands where the boat keeps him; the stick steers the boat (scripts/boat.gd)
+func _on_boat(dt: float):
+	swimming = false; speed_now = 0.0; vy = 0.0
+	_needs(dt)
+	stam = minf(100.0, stam + (3.0 if want_run else 8.0) * dt)
+	match state:
+		"attack":
+			if not hit_done and state_t > 0.3:
+				hit_done = true
+				var cf := Vector3(sin(cam_yaw), 0, cos(cam_yaw))
+				game.throw_harpoon(global_position + Vector3.UP * 1.7, cf)
+			if state_t > 0.7: state = "move"
+		"act":
+			if state_t > 2.4: _finish_act(); state = "move"
+		"hit":
+			if state_t > 0.45: state = "move"
+		"move":
+			_play("Idle", 0.25)
+	var st := boat.seat()
+	global_position = st.origin
+	face = boat.yaw if state != "attack" else cam_yaw
+	rotation = Vector3(0, face, 0)
+	_spear_follow()
+
 func _finish_act():
-	if act_kind == "drink":
+	if act_kind == "butcher":
+		if is_instance_valid(act_target): game.butcher(act_target)
+	elif act_kind == "drink":
 		water = minf(100.0, water + 45.0); said.emit("שתית מהנהר")
 	elif act_kind == "eat" and is_instance_valid(act_target) and act_target.has_method("take_meat"):
 		var got: float = act_target.take_meat(40.0)

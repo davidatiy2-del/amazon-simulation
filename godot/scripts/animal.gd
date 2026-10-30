@@ -66,7 +66,7 @@ func take_meat(want: float) -> float:
 	return got
 
 func _good_ground(x: float, z: float) -> bool:
-	if absf(x) > 490.0 or absf(z) > 490.0: return false
+	if not Animals.in_land(kind.land, x, z): return false
 	var d := hd.water_depth(x, z)
 	if water_ok: return d < 0.3
 	return d < 0.25 and hd.normal(x, z).y > 0.78

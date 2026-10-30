@@ -7,7 +7,7 @@ All 3D art in this repository is **CC0 1.0** (public domain). Crediting is not r
 | Folder | Pack |
 |---|---|
 | `godot/assets/nature/` | Stylized Nature MegaKit (trees, palms, bushes, ferns, plants, flowers, mushrooms, grass, rocks) |
-| `godot/assets/animals/` | Animal Packs and Farm Animals (animated) |
+| `godot/assets/animals/` | Animal Packs and Farm Animals (animated): the whale, the gulls (eagle model), zebras, horses |
 | `godot/assets/people/rpg/` | RPG Characters (Cleric, Monk, Ranger, Rogue, Warrior, Wizard, with their weapons) |
 | `godot/assets/people/town/` | Ultimate Animated Character Pack (villagers, workers, knights, soldiers) |
 | `godot/assets/nf/` | Adventurer, Hooded Adventurer, Rogue, Monarch, Soldier, deer, stag, fox, wolf, frog, bat, cat, dogs, crab, raptor, palm, tent, campfire — from the CC0 collection `@netforge/asset-library-files` (Quaternius and Kenney models). See `godot/assets/nf/NOTICE` and `CC0-1.0.txt`. |
@@ -17,6 +17,7 @@ Downloaded from OpenGameArt (https://opengameart.org/users/quaternius) and the n
 ## Kenney — https://kenney.nl (CC0)
 
 - Mini Characters (`godot/assets/nf/mini_*`)
+- Pirate Kit 2.1 (`godot/assets/pirate/`): the ships, rowboats, piers, barrels, crates and the wreck — downloaded from https://opengameart.org/content/pirate-kit
 
 ## Fonts (SIL Open Font License 1.1)
 
