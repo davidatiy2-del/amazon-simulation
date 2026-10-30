@@ -17,6 +17,8 @@ var rng := RandomNumberGenerator.new()
 var trunks := PackedFloat32Array()  # x, z, r
 var places := {}
 var keep_clear: Array = []          # [x, z, r]: no plants here (piers, boats, the wreck)
+var PAINT := PackedColorArray()     # streets, plazas and fields painted on the ground (alpha: how much)
+var cities := {}
 
 func idx(i: int, j: int) -> int: return clampi(j, 0, NZ - 1) * NX + clampi(i, 0, NX - 1)
 func ci(x: float) -> int: return int(round((x - X0) / CELL))
@@ -43,6 +45,7 @@ func _init():
 	var f := FileAccess.open("res://world/height.bin", FileAccess.WRITE); f.store_buffer(H.to_byte_array()); f.close()
 	var root := Node3D.new(); root.name = "World"
 	_harbors(root)
+	_cities(root)
 	_ground(root)
 	print("ground ", Time.get_ticks_msec() - t0, " ms")
 	_water(root)
@@ -50,6 +53,7 @@ func _init():
 	_plants(root)
 	print("plants ", Time.get_ticks_msec() - t0, " ms")
 	f = FileAccess.open("res://world/trunks.bin", FileAccess.WRITE); f.store_buffer(trunks.to_byte_array()); f.close()
+	places["cities"] = cities
 	f = FileAccess.open("res://world/places.json", FileAccess.WRITE); f.store_string(JSON.stringify(places, "\t")); f.close()
 	_own(root, root)
 	var ps := PackedScene.new(); ps.pack(root)
@@ -74,7 +78,9 @@ func ground_color(i: int, j: int) -> Color:
 		c = Color(0.42, 0.52, 0.19).lerp(Color(0.55, 0.56, 0.24), dry * 0.6).lerp(Color(0.24, 0.31, 0.14), smoothstep(0.45, 0.8, pn))
 		if h > 18.0: c = c.lerp(Color(0.46, 0.46, 0.4), smoothstep(18.0, 34.0, h))
 	elif S.is_island(x, z):
-		c = Color(0.36, 0.52, 0.18)
+		c = Color(0.36, 0.52, 0.18).lerp(Color(0.22, 0.36, 0.12), smoothstep(25.0, 70.0, s) * 0.8)
+		if h > 16.0: c = c.lerp(Color(0.31, 0.27, 0.24), smoothstep(16.0, 30.0, h))      # the volcano's dark rock
+		if h > 36.0: c = c.lerp(Color(0.2, 0.17, 0.16), smoothstep(36.0, 44.0, h))
 	else:
 		var fo := S.forest_at(x, z)
 		c = Color(0.30, 0.45, 0.15).lerp(Color(0.17, 0.27, 0.10), fo)   # open grass .. shaded forest floor
@@ -87,6 +93,8 @@ func ground_color(i: int, j: int) -> Color:
 	elif d < 9.0:
 		c = c.lerp(Color(0.40, 0.33, 0.22), smoothstep(9.0, 2.0, d))            # muddy river banks
 		if d < 1.5: c = c.lerp(Color(0.62, 0.55, 0.40), smoothstep(1.5, -0.5, d))
+	var pc := PAINT[k] if PAINT.size() > k else Color(0, 0, 0, 0)
+	if pc.a > 0.0: c = c.lerp(Color(pc.r, pc.g, pc.b), pc.a)
 	if h < -0.3:
 		if s < 0.0: c = Color(0.74, 0.68, 0.5).lerp(Color(0.28, 0.36, 0.33), smoothstep(-1.0, -14.0, h))   # the sea floor
 		else: c = c.lerp(Color(0.30, 0.27, 0.19), smoothstep(-1.0, -4.0, h))                                # river bed
@@ -172,6 +180,75 @@ func _collision(root: Node3D):
 	cs.position = Vector3(X0 + WorldShape.SIZE_X * 0.5, 0, Z0 + WorldShape.SIZE_Z * 0.5)
 	body.add_child(cs)
 
+
+# ---------------------------------------------------------------- the cities (tools/citygen.gd), the volcano, more piers
+const PAINT_COLORS := {"road": Color(0.53, 0.43, 0.31, 0.9), "plaza": Color(0.5, 0.48, 0.44, 0.92), "yard": Color(0.5, 0.42, 0.3, 0.75), "field": Color(0.56, 0.46, 0.22, 0.85)}
+func _cities(root: Node3D):
+	var cg := CityGen.new()
+	cg.S = S; cg.hat = hat
+	cities = cg.build_all(root)
+	keep_clear.append_array(cg.keep_clear)
+	PAINT.resize(NX * NZ)
+	PAINT.fill(Color(0, 0, 0, 0))
+	# inside the walls: trodden grass
+	for id in WorldShape.CITIES:
+		var c: Array = WorldShape.CITIES[id]
+		_paint(c[0], c[1], c[2], c[3], Color(0.4, 0.45, 0.24, 0.45), 6.0)
+	for pdef in cg.paint:
+		_paint(pdef[1], pdef[2], pdef[3], pdef[4], PAINT_COLORS.get(pdef[0], Color(0.5, 0.45, 0.35, 0.7)), 2.5)
+	print("cities ", cities.keys(), " buildings ", cities.home.buildings.size(), " homes ", cities.home.homes.size(), " nodes ", cities.home.nodes.size())
+	# the volcano: a glowing crater and smoke
+	var v: Vector3 = S.volcano
+	var lava := MeshInstance3D.new(); lava.name = "Lava"
+	var cm := CylinderMesh.new(); cm.top_radius = 10.5; cm.bottom_radius = 10.5; cm.height = 0.4; cm.radial_segments = 24; lava.mesh = cm
+	var lm := StandardMaterial3D.new(); lm.albedo_color = Color(1.0, 0.35, 0.05); lm.emission_enabled = true; lm.emission = Color(1.0, 0.32, 0.04); lm.emission_energy_multiplier = 2.5
+	lava.material_override = lm; lava.position = Vector3(v.x, hat(v.x, v.y) + 1.2, v.y); root.add_child(lava)
+	var smoke := CPUParticles3D.new(); smoke.name = "Smoke"
+	smoke.amount = 40; smoke.lifetime = 14.0; smoke.preprocess = 14.0; smoke.direction = Vector3.UP; smoke.spread = 12.0
+	smoke.initial_velocity_min = 3.0; smoke.initial_velocity_max = 5.0; smoke.gravity = Vector3(0.6, 0.4, 0.2)
+	smoke.scale_amount_min = 6.0; smoke.scale_amount_max = 14.0; smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; smoke.emission_sphere_radius = 5.0
+	var q := QuadMesh.new(); q.size = Vector2(1, 1)
+	var sm := StandardMaterial3D.new(); sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sm.albedo_color = Color(0.32, 0.3, 0.3, 0.35); sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	var gt := GradientTexture2D.new(); gt.fill = GradientTexture2D.FILL_RADIAL; gt.fill_from = Vector2(0.5, 0.5); gt.fill_to = Vector2(1.0, 0.5)
+	var gr := Gradient.new(); gr.set_color(0, Color(1, 1, 1, 1)); gr.set_color(1, Color(1, 1, 1, 0)); gt.gradient = gr; gt.width = 64; gt.height = 64
+	sm.albedo_texture = gt; q.material = sm; smoke.mesh = q
+	smoke.position = lava.position + Vector3(0, 2, 0); root.add_child(smoke)
+	keep_clear.append([v.x, v.y, 30.0])
+
+func _paint(x: float, z: float, hx: float, hz: float, col: Color, soft: float):
+	var i0 := ci(x - hx - soft); var i1 := ci(x + hx + soft); var j0 := cj(z - hz - soft); var j1 := cj(z + hz + soft)
+	for j in range(maxi(0, j0), mini(NZ, j1 + 1)):
+		for i in range(maxi(0, i0), mini(NX, i1 + 1)):
+			var px := X0 + i * CELL; var pz := Z0 + j * CELL
+			var dx := maxf(0.0, absf(px - x) - hx); var dz := maxf(0.0, absf(pz - z) - hz)
+			var w := (1.0 - smoothstep(0.0, soft, sqrt(dx * dx + dz * dz))) * col.a
+			if w <= 0.0: continue
+			var k := j * NX + i
+			var old := PAINT[k]
+			var a := old.a + w * (1.0 - old.a)
+			var c := Color(col.r, col.g, col.b).lerp(Color(old.r, old.g, old.b), old.a * (1.0 - w) / maxf(0.001, a)) if old.a > 0.0 else Color(col.r, col.g, col.b)
+			PAINT[k] = Color(c.r, c.g, c.b, a)
+
+# more piers by your city for its fleet: at a fixed x along the jungle's coast
+func _pier_at(hb: Node3D, x: float, id: String) -> Dictionary:
+	var dir := 1.0
+	var zc := S.coast_jungle(x)
+	var shore := INF
+	var z := zc - 80.0
+	for q in 120:
+		if hat(x, z) < 0.15: shore = z; break
+		z += 2.0
+	if shore == INF: return {}
+	var L := 0.0
+	while L < 80.0 and hat(x, shore + L) > -4.0: L += 1.0
+	if L >= 80.0: return {}
+	var L2: float = ceil((L + 8.0) / PIER_PIECE) * PIER_PIECE
+	var hp := {"id": id, "x": x, "shore": shore, "len": L, "dir": dir, "z0": shore - 6.0, "z1": shore - 6.0 + L2, "top": PIER_TOP, "yaw": 0.0}
+	hp["ship"] = [x + 9.0, float(hp.z1) - 7.0, 0.0]
+	_build_pier(hb, hp)
+	return hp
+
 # ---------- the harbors: a pier from the beach out to deep water, a rowboat and a ship ----------
 const PIER_TOP := 1.05       # the planks, above the water
 const PIER_PIECE := 5.0      # one platform piece (Kenney's dock, scaled)
@@ -186,6 +263,13 @@ func _harbors(root: Node3D):
 		hp["id"] = e[1]; hp["name"] = e[2]
 		_build_pier(hb, hp)
 		places.harbors.append(hp)
+	# two more piers east of the jungle's harbor: your city's fleet moors there
+	places["piers"] = []
+	if not jungle.is_empty():
+		for k in 2:
+			var px: float = float(jungle.x) + 42.0 * (k + 1)
+			var pp := _pier_at(hb, px, "home_%d" % (k + 2))
+			if not pp.is_empty(): places.piers.append(pp)
 	# the wreck of an old ship on the big island's beach
 	var isl: Vector3 = S.islands[0]
 	var best := Vector3.ZERO; var bd := 1e9
@@ -285,7 +369,7 @@ func _build_pier(hb: Node3D, hp: Dictionary):
 	keep_clear.append([hp.x, mid, absf(float(hp.z1) - float(hp.z0)) * 0.5 + 12.0])
 	keep_clear.append([hp.x, float(hp.z0) - 14.0 * dir, 16.0])
 	keep_clear.append([hp.ship[0], hp.ship[1], 14.0])
-	keep_clear.append([hp.row[0], hp.row[1], 6.0])
+	if hp.has("row"): keep_clear.append([hp.row[0], hp.row[1], 6.0])
 
 # ---------- the plants ----------
 # name, files, scale range, grid cell (m), rule, shadows, how far it is drawn, trunk radius
@@ -344,15 +428,18 @@ func _wants(rule: String, x: float, z: float, h: float, d: float, s: float, n: V
 	var isl := not nw and S.is_island(x, z)
 	var fo := S.forest_at(x, z)
 	var sand := s < 14.0
+	var lost := isl and Vector2(x - 205.0, z - 960.0).length() < 178.0   # the lost island: a jungle of its own
 	match rule:
 		"forest":
+			if lost: return 0.0 if s < 22.0 or h > 24.0 or n.y < 0.8 else 0.5 + fo * 0.3
 			if nw or isl: return 0.0
 			return 0.0 if d < 6.0 or n.y < 0.78 or h > 34.0 else 0.15 + fo * 0.85
 		"giant":
+			if lost: return 0.0 if s < 45.0 or h > 20.0 or n.y < 0.86 else smoothstep(0.5, 0.9, fo) * 0.6
 			if nw or isl: return 0.0
 			return 0.0 if d < 14.0 or n.y < 0.85 or h > 26.0 else smoothstep(0.55, 0.9, fo) * 0.75
 		"palm":
-			if nw or d < 3.0 or n.y < 0.85: return 0.0
+			if nw or d < 3.0 or n.y < 0.85 or h > 18.0: return 0.0
 			if isl: return 0.5
 			if s < 60.0: return 0.45
 			return 0.55 if d < 26.0 else 0.06 * (1.0 - fo)
@@ -371,13 +458,15 @@ func _wants(rule: String, x: float, z: float, h: float, d: float, s: float, n: V
 			if isl: return 0.3
 			return 0.25 + fo * 0.55
 		"fern":
+			if lost and not sand and h < 24.0 and n.y > 0.75: return 0.3
 			if nw or isl or sand or d < 1.5 or n.y < 0.7: return 0.0
 			return 0.25 + fo * 0.55
 		"floor":
+			if lost and not sand and h < 22.0 and n.y > 0.78: return 0.28
 			if nw or isl or sand or d < 1.0 or n.y < 0.75: return 0.0
 			return 0.18 + fo * 0.25
 		"grass":
-			if nw or sand or d < 0.5 or n.y < 0.8: return 0.0
+			if nw or sand or d < 0.5 or n.y < 0.8 or (isl and h > 20.0): return 0.0
 			if isl: return 0.55
 			return (1.0 - fo) * 0.75 + (0.35 if d < 12.0 else 0.0)
 		"meadow":
@@ -393,6 +482,7 @@ func _wants(rule: String, x: float, z: float, h: float, d: float, s: float, n: V
 			if d < -0.5: return 0.0
 			var r := (0.25 if d < 8.0 else 0.0) + smoothstep(0.1, 0.35, 1.0 - n.y) * 0.8 + 0.04
 			if nw: r += smoothstep(14.0, 30.0, h) * 0.5
+			if isl: r += smoothstep(16.0, 30.0, h) * 0.45
 			return r
 	return 0.0
 

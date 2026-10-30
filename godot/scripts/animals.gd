@@ -30,6 +30,13 @@ const KINDS := {
 	"greywolf": {"name": "זאב אפור", "model": "res://assets/nf/wolf.glb", "size": 1.05, "walk": 1.6, "run": 8.4, "hp": 90.0, "sense": 20.0,
 		"role": "hunter", "meat": 50.0, "bite": 15.0, "count": 3, "night_count": 6, "herd": true, "land": "new",
 		"anims": {"idle": "Idle", "walk": "Walk", "run": "Gallop", "eat": "Eating", "attack": "Attack", "death": "Death", "hit": "Idle_HitReact_Left"}},
+	# ---- the lost island: dinosaurs ----
+	"raptor": {"name": "דורס", "model": "res://assets/nf/raptor.glb", "size": 1.4, "walk": 2.0, "run": 9.2, "hp": 75.0, "sense": 24.0,
+		"role": "hunter", "meat": 45.0, "bite": 12.0, "count": 3, "night_count": 6, "herd": true, "land": "lost",
+		"anims": {"idle": "Velociraptor_Idle", "walk": "Velociraptor_Walk", "run": "Velociraptor_Run", "attack": "Velociraptor_Attack", "death": "Velociraptor_Death"}},
+	"triceratops": {"name": "טריצרטופס", "model": "res://assets/nf/triceratops.glb", "size": 2.6, "walk": 1.3, "run": 6.0, "hp": 320.0, "sense": 15.0,
+		"role": "prey", "meat": 170.0, "bite": 0.0, "count": 4, "herd": true, "land": "lost",
+		"anims": {"idle": "Triceratops_Idle", "walk": "Triceratops_Walk", "run": "Triceratops_Run", "attack": "Triceratops_Attack", "death": "Triceratops_Death"}},
 }
 var hd := HeightData.new()
 var list: Array[Animal] = []
@@ -61,7 +68,7 @@ func _process(dt: float):
 	spawn_t -= dt
 	if spawn_t <= 0.0:
 		spawn_t = 1.5
-		var land := land_at(pp.z)
+		var land := land_at(pp.x, pp.z)
 		for key in KINDS:
 			var k: Dictionary = KINDS[key]
 			if k.land != land: continue
@@ -70,14 +77,16 @@ func _process(dt: float):
 			for a in list: if a.kind == k and not a.is_dead(): have += 1
 			if have < want: _spawn(k, pp, list.is_empty())
 
-# which land's animals live around z: the jungle's, the new world's, or none (out at sea)
-static func land_at(z: float) -> String:
+# which land's animals live around (x, z): the jungle's, the new world's, the lost island's, or none (out at sea)
+static func land_at(x: float, z: float) -> String:
+	if Vector2(x - 205.0, z - 960.0).length() < 330.0: return "lost"
 	if z < 640.0: return "jungle"
 	if z > 1380.0: return "new"
 	return ""
 
 static func in_land(land: String, x: float, z: float) -> bool:
 	if absf(x) > 485.0: return false
+	if land == "lost": return Vector2(x - 205.0, z - 960.0).length() < 135.0
 	if land == "jungle": return z > -485.0 and z < 560.0
 	return z > 1480.0 and z < 2535.0
 
@@ -111,6 +120,12 @@ func _spawn(k: Dictionary, pp: Vector3, first: bool) -> void:
 		n.setup(k, hd, Vector3(x, 0, z))
 		list.append(n)
 		return
+
+static func _in_city(x: float, z: float) -> bool:
+	for id in WorldShape.CITIES:
+		var c: Array = WorldShape.CITIES[id]
+		if absf(x - c[0]) < c[2] + 30.0 and absf(z - c[1]) < c[3] + 30.0: return true
+	return false
 
 func strike(from: Vector3, fwd: Vector3, reach: float, dmg: float) -> Animal:
 	var best: Animal = null; var bd := reach

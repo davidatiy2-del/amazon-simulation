@@ -6,12 +6,17 @@ extends Control
 signal start_pressed(fresh: bool)
 signal resume_pressed
 signal quality_changed(q: String)
+signal respawn_pressed
+signal skin_pressed
 
 var bars := {}
 var clock: Label
 var fps: Label
 var trophies: Label
 var nav: Label
+var war_label: Label
+var city_label: Label
+var gate_row: HBoxContainer
 var hull_row: HBoxContainer
 var feed: VBoxContainer
 var hurt_rect: ColorRect
@@ -49,8 +54,20 @@ func _ready():
 	nav.anchor_left = 0.5; nav.anchor_right = 0.5; nav.offset_left = -300; nav.offset_right = 300; nav.offset_top = 22
 	nav.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; add_child(nav)
 	fps = _label("", 13, Color(1, 1, 1, 0.5)); fps.position = Vector2(100, 60); add_child(fps)
+	city_label = _label("", 15, Color(0.85, 0.95, 1.0)); city_label.position = Vector2(100, 98); city_label.size = Vector2(270, 24)
+	city_label.clip_text = true; city_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; add_child(city_label)
+	war_label = _label("", 19, Color(1.0, 0.85, 0.6)); war_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	war_label.anchor_left = 0.5; war_label.anchor_right = 0.5; war_label.offset_left = -330; war_label.offset_right = 330; war_label.offset_top = 50
+	war_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; add_child(war_label)
+	gate_row = HBoxContainer.new(); gate_row.set_anchors_preset(Control.PRESET_CENTER_TOP); gate_row.anchor_left = 0.5; gate_row.anchor_right = 0.5
+	gate_row.offset_left = -130; gate_row.offset_right = 130; gate_row.offset_top = 80; gate_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var gpb := ProgressBar.new(); gpb.max_value = 100; gpb.show_percentage = false; gpb.custom_minimum_size = Vector2(180, 14); gpb.name = "GateBar"
+	var gbg := StyleBoxFlat.new(); gbg.bg_color = Color(0, 0, 0, 0.5); gbg.set_corner_radius_all(7)
+	var gfg := StyleBoxFlat.new(); gfg.bg_color = Color(0.6, 0.42, 0.25); gfg.set_corner_radius_all(7)
+	gpb.add_theme_stylebox_override("background", gbg); gpb.add_theme_stylebox_override("fill", gfg)
+	gate_row.add_child(gpb); gate_row.add_child(_label("השער", 16)); gate_row.visible = false; add_child(gate_row)
 	feed = VBoxContainer.new(); feed.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	feed.anchor_left = 0.5; feed.anchor_right = 0.5; feed.offset_left = -300; feed.offset_right = 300; feed.offset_top = 70
+	feed.anchor_left = 0.5; feed.anchor_right = 0.5; feed.offset_left = -250; feed.offset_right = 250; feed.offset_top = 76
 	feed.alignment = BoxContainer.ALIGNMENT_BEGIN; feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(feed)
 	_make_screens()
@@ -93,25 +110,27 @@ func _make_screens():
 
 	c = _screen("menu", 0.35)
 	t = _label("אמזוניה", 92, GOLD); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
-	l = _label("צייד לבד בג׳ונגל. לצוד, לשרוד את הלילה, להפליג אל העולם החדש ולצוד לווייתנים.", 22, Color(1, 1, 1, 0.85))
+	l = _label("ראש השבט של עיר הנמל: 300 תושבים, אורוות, צי ספינות. לצוד, לשוט, ולכבוש את הממלכות שמעבר לים.", 22, Color(1, 1, 1, 0.85))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(l)
 	var cont := _button("להמשיך מהשמירה", true); cont.name = "Cont"; c.add_child(cont)
 	cont.pressed.connect(func(): start_pressed.emit(false))
 	var nb := _button("מסע חדש", false); nb.name = "New"; c.add_child(nb)
 	nb.pressed.connect(func(): start_pressed.emit(true))
 	c.add_child(_quality_row())
-	var note := _label("גרסת Godot · שלב 2: הים, הסירות, הלווייתנים והעולם החדש", 16, Color(1, 1, 1, 0.55))
+	var note := _label("גרסה 3 · הממלכות: ערים, אבירים וסוסים, צי וכיבושים, חיות מלחמה", 16, Color(1, 1, 1, 0.55))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(note)
 
 	c = _screen("pause", 0.55)
 	t = _label("הג׳ונגל מחכה", 54, GOLD); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
 	var rb := _button("להמשיך", true); c.add_child(rb); rb.pressed.connect(func(): resume_pressed.emit())
+	var skb := _button("הדמות שלי", false); c.add_child(skb); skb.pressed.connect(func(): skin_pressed.emit())
 	c.add_child(_quality_row())
 
 	c = _screen("death", 0.6)
 	t = _label("המסע נגמר", 60, Color(1, 0.55, 0.45)); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
 	l = _label("", 24); l.name = "Cause"; l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(l)
-	var again := _button("מסע חדש", true); c.add_child(again); again.pressed.connect(func(): start_pressed.emit(true))
+	var wake := _button("להתעורר בעיר", true); wake.name = "Wake"; c.add_child(wake); wake.pressed.connect(func(): respawn_pressed.emit())
+	var again := _button("מסע חדש", false); c.add_child(again); again.pressed.connect(func(): start_pressed.emit(true))
 
 func _quality_row() -> HBoxContainer:
 	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation", 8)
@@ -150,14 +169,15 @@ func show_death(cause: String):
 	show_screen("death")
 
 func msg(text: String):
-	var l := _label(text, 22, Color(1, 0.96, 0.85)); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var l := _label(text, 20, Color(1, 0.96, 0.85)); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.custom_minimum_size = Vector2(500, 0)
 	feed.add_child(l)
-	if feed.get_child_count() > 4: feed.get_child(0).queue_free()
+	if feed.get_child_count() > 3: feed.get_child(0).queue_free()
 	var tw := create_tween(); tw.tween_interval(3.5); tw.tween_property(l, "modulate:a", 0.0, 0.8); tw.tween_callback(l.queue_free)
 
 func update_stats(p: Player, dn: DayNight):
 	bars.hp.value = p.hp; bars.food.value = p.food; bars.water.value = p.water; bars.stam.value = p.stam
-	var on_ship := p.boat != null and p.boat.kind == "ship"
+	var on_ship := p.boat != null and p.boat.kind != "row"
 	hull_row.visible = on_ship
 	if on_ship: bars.hull.value = p.boat.hull
 	var h := int(dn.time); var m := int((dn.time - h) * 60.0)
@@ -170,6 +190,14 @@ func set_trophies(whales: int, oil: int):
 
 func set_nav(text: String):
 	nav.text = text
+
+func set_war(text: String, gate := -1.0):
+	war_label.text = text
+	gate_row.visible = gate >= 0.0
+	if gate >= 0.0: (gate_row.get_node("GateBar") as ProgressBar).value = gate
+
+func set_city(text: String):
+	city_label.text = text
 
 func flash_hurt():
 	hurt_rect.color.a = 0.35

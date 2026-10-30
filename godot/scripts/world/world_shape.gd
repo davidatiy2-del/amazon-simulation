@@ -27,7 +27,11 @@ var rwidth: PackedFloat32Array = []    # its width there
 var stream: PackedVector2Array = []    # the stream from the lake to the river
 var lake := Vector3(175, 70, 52)       # x, z, radius (the jungle's lake)
 var lake2 := Vector3(-130, 2080, 46)   # the new world's lake
-var islands := [Vector3(190, 930, 48), Vector3(-250, 1180, 32)]   # x, z, radius
+var islands := [Vector3(205, 960, 150), Vector3(-262, 1200, 92)]   # x, z, radius: the lost island (dinosaurs), the pirates' island
+var volcano := Vector3(268, 1032, 78)    # x, z, radius of the volcano's cone on the lost island
+# the cities stand on flattened ground: id -> [x, z, half width (x), half depth (z), ground height]
+const CITIES := {"home": [170.0, 322.0, 100.0, 80.0, 4.0], "north": [-30.0, 1712.0, 90.0, 72.0, 3.2],
+	"lost": [178.0, 878.0, 64.0, 56.0, 2.6], "pirate": [-262.0, 1172.0, 56.0, 46.0, 2.8]}
 
 func _init():
 	hills.seed = 7; hills.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH; hills.frequency = 0.0042
@@ -75,6 +79,21 @@ func land_s(x: float, z: float) -> float:
 
 func is_island(x: float, z: float) -> bool:
 	return z > coast_jungle(x) + 40.0 and z < coast_new(x) - 40.0
+
+# 0..1: how much the ground here is a city's flat ground (1 inside, fading over 45 m outside), and its height
+func city_flat(x: float, z: float) -> Vector2:
+	for id in CITIES:
+		var c: Array = CITIES[id]
+		var dx := maxf(0.0, absf(x - c[0]) - c[2]); var dz := maxf(0.0, absf(z - c[1]) - c[3])
+		var d := sqrt(dx * dx + dz * dz)
+		if d < 45.0: return Vector2(1.0 - smoothstep(0.0, 45.0, d), c[4])
+	return Vector2.ZERO
+
+func city_at(x: float, z: float, margin := 0.0) -> String:
+	for id in CITIES:
+		var c: Array = CITIES[id]
+		if absf(x - c[0]) < c[2] + margin and absf(z - c[1]) < c[3] + margin: return id
+	return ""
 
 func is_new_world(z: float) -> bool: return z > NEW_WORLD_Z
 
@@ -127,6 +146,8 @@ func height_d(x: float, z: float, d: float, s: float) -> float:
 	if is_new_world(z): land = _new_world_land(x, z)
 	elif is_island(x, z): land = _island_land(x, z, s)
 	else: land = _jungle_land(x, z)
+	var cf := city_flat(x, z)
+	if cf.x > 0.0: land = lerpf(land, cf.y + 0.12 * detail.get_noise_2d(x * 0.3, z * 0.3), cf.x)
 	# the beach: low near the water, rising inland
 	var beach := 0.3 + s * 0.035 + 0.25 * detail.get_noise_2d(x * 0.5, z * 0.5)
 	var h := lerpf(beach, land, smoothstep(0.0, 70.0, s))
@@ -142,7 +163,16 @@ func _jungle_land(x: float, z: float) -> float:
 	return base + smoothstep(0.72, 1.0, edge) * 46.0
 
 func _island_land(x: float, z: float, s: float) -> float:
-	return 1.2 + minf(s, 40.0) * 0.12 + 1.6 * hills.get_noise_2d(x * 3.0, z * 3.0)
+	var h := 1.2 + minf(s, 40.0) * 0.12 + 1.6 * hills.get_noise_2d(x * 3.0, z * 3.0)
+	h += smoothstep(30.0, 120.0, s) * (6.0 + 7.0 * hills2.get_noise_2d(x * 1.6, z * 1.6))   # hills inland on the big islands
+	# the volcano: a cone with a crater at the top
+	var dv := Vector2(x, z).distance_to(Vector2(volcano.x, volcano.y))
+	if dv < volcano.z:
+		var k := 1.0 - dv / volcano.z
+		var cone := 58.0 * k * k * (3.0 - 2.0 * k) + 2.0 * detail.get_noise_2d(x, z)
+		if dv < 13.0: cone -= (13.0 - dv) * 1.1      # the crater
+		h = maxf(h, cone)
+	return h
 
 func _new_world_land(x: float, z: float) -> float:
 	var inland := z - coast_new(x)

@@ -25,7 +25,7 @@ func _process(dt: float):
 	var focus: Vector3
 	var want_dist := dist
 	if boat != null:
-		focus = boat.position + Vector3.UP * (7.0 if boat.kind == "ship" else 1.8)
+		focus = boat.position + Vector3.UP * (7.0 if boat.kind != "row" else 1.8)
 		want_dist = float(boat.K.cam)
 	else:
 		focus = target.position + Vector3.UP * 1.55

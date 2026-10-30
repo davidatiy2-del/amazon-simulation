@@ -16,6 +16,9 @@ static var trunks: PackedFloat32Array
 static var grid := {}   # 16 m cells -> list of trunk indexes
 static var places := {}
 static var decks: Array = []   # walkable boxes: {x, z, yaw, hx, hz, top}
+static var boxes: Array = []   # what blocks the way in the cities: [x, z, yaw, hx, hz] (buildings, walls, gates' sides)
+static var bgrid := {}         # 16 m cells -> box indexes
+static var gate_boxes := {}    # "city/gate" -> index of the box that closes it (or -1 while open)
 
 func _init():
 	if H.is_empty():
@@ -59,8 +62,40 @@ func harbor(id: String) -> Dictionary:
 	for hb in places.get("harbors", []):
 		if hb.id == id: return hb
 	return {}
+static func add_box(b: Array) -> int:
+	boxes.append(b)
+	var i := boxes.size() - 1
+	var ext := maxf(float(b[3]), float(b[4])) * 1.42
+	for gx in range(int(floor((float(b[0]) - ext) / 16.0)), int(floor((float(b[0]) + ext) / 16.0)) + 1):
+		for gz in range(int(floor((float(b[1]) - ext) / 16.0)), int(floor((float(b[1]) + ext) / 16.0)) + 1):
+			var key := Vector2i(gx, gz)
+			if not bgrid.has(key): bgrid[key] = PackedInt32Array()
+			bgrid[key].append(i)
+	return i
+
+# a city's gate shut (a box across its opening) or open
+static func set_gate(city: String, g: Dictionary, shut: bool) -> void:
+	var key := city + "/" + str(g.id)
+	if shut:
+		if gate_boxes.get(key, -1) >= 0: boxes[gate_boxes[key]][3] = float(g.w) * 0.5 + 0.4; return
+		gate_boxes[key] = add_box([float(g.x), float(g.z), float(g.yaw), float(g.w) * 0.5 + 0.4, 1.6])
+	elif gate_boxes.get(key, -1) >= 0:
+		boxes[gate_boxes[key]][3] = 0.0   # (kept in the grid, but no longer in the way)
+
+# is a point inside something that blocks (r: the body's radius)
+func blocked(x: float, z: float, r: float) -> bool:
+	var key := Vector2i(int(floor(x / 16.0)), int(floor(z / 16.0)))
+	if not bgrid.has(key): return false
+	for i in bgrid[key]:
+		var b: Array = boxes[i]
+		if float(b[3]) <= 0.0: continue
+		var dx := x - float(b[0]); var dz := z - float(b[1]); var cy := cos(float(b[2])); var sy := sin(float(b[2]))
+		if absf(dx * cy - dz * sy) < float(b[3]) + r and absf(dx * sy + dz * cy) < float(b[4]) + r: return true
+	return false
+
 # pushes a point out of any trunk it is inside of (r: the body's radius)
 func push_out(p: Vector3, r: float) -> Vector3:
+	p = _push_boxes(p, r)
 	var c := Vector2i(int(floor(p.x / 16.0)), int(floor(p.z / 16.0)))
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
@@ -72,6 +107,23 @@ func push_out(p: Vector3, r: float) -> Vector3:
 				if d2 < tr * tr and d2 > 0.0001:
 					var d := sqrt(d2); p.x = tx + ddx / d * tr; p.z = tz + ddz / d * tr
 	return p
+func _push_boxes(p: Vector3, r: float) -> Vector3:
+	var key := Vector2i(int(floor(p.x / 16.0)), int(floor(p.z / 16.0)))
+	if not bgrid.has(key): return p
+	for i in bgrid[key]:
+		var b: Array = boxes[i]
+		var ex := float(b[3]) + r; var ez := float(b[4]) + r
+		if float(b[3]) <= 0.0: continue
+		var dx := p.x - float(b[0]); var dz := p.z - float(b[1]); var cy := cos(float(b[2])); var sy := sin(float(b[2]))
+		var lx := dx * cy - dz * sy; var lz := dx * sy + dz * cy
+		if absf(lx) >= ex or absf(lz) >= ez: continue
+		if ex - absf(lx) < ez - absf(lz): lx = ex if lx >= 0.0 else -ex
+		else: lz = ez if lz >= 0.0 else -ez
+		p.x = float(b[0]) + lx * cy + lz * sy; p.z = float(b[1]) - lx * sy + lz * cy
+	return p
+
+func city(id: String) -> Dictionary: return places.get("cities", {}).get(id, {})
+
 # the nearest dry land (or pier) to (x, z) within r meters, or Vector3.INF
 func land_near(x: float, z: float, r: float) -> Vector3:
 	var best := Vector3.INF; var bd := 1e9

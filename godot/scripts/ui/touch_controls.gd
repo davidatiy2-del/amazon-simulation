@@ -16,7 +16,12 @@ var buttons := {}          # action -> {pos, r, label, down_id}
 var act_label := ""
 var labels := {}           # action -> a label in place of the usual one ("" hides the button)
 var font: Font
+var battle := false        # the orders' buttons show
+var sel_group := "all"
+var blockers: Array = []   # Controls over which touches are not the stick's or the camera's
 const STICK_R := 70.0
+const ORDERS := [["o_follow", "אחריי"], ["o_charge", "להסתער"], ["o_hold", "לעמוד"], ["o_wall", "מגנים"], ["o_ram", "לפרוץ"], ["o_retreat", "לספינות"]]
+const GROUPS := [["g_all", "כולם"], ["g_knight", "אבירים"], ["g_warrior", "לוחמים"], ["g_archer", "קשתים"], ["g_beast", "חיות"]]
 
 func _ready():
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -33,11 +38,20 @@ func _layout():
 		"run": {"pos": Vector2(w - 95, h - 270), "r": 42.0, "label": "ריצה", "id": -1},
 		"act": {"pos": Vector2(w - 245, h - 215), "r": 48.0, "label": "", "id": -1},
 		"pause": {"pos": Vector2(52, 52), "r": 30.0, "label": "II", "id": -1},
+		"council": {"pos": Vector2(52, 132), "r": 34.0, "label": "מועצה", "id": -1, "small": true},
+		"city": {"pos": Vector2(52, 212), "r": 34.0, "label": "העיר", "id": -1, "small": true},
 	}
+	# the orders, in two rows in the middle of the bottom
+	var cx := w * 0.5 - 30.0
+	for i in ORDERS.size():
+		buttons[ORDERS[i][0]] = {"pos": Vector2(cx + (i - 2.5) * 78.0, h - 58.0), "r": 34.0, "label": ORDERS[i][1], "id": -1, "bar": true, "small": true}
+	for i in GROUPS.size():
+		buttons[GROUPS[i][0]] = {"pos": Vector2(cx + (i - 2.0) * 78.0, h - 140.0), "r": 30.0, "label": GROUPS[i][1], "id": -1, "bar": true, "small": true, "group": true}
 	queue_redraw()
 
 func _label_of(k: String) -> String:
 	if k == "act": return act_label
+	if buttons[k].get("bar", false) and not battle: return ""
 	return labels.get(k, buttons[k].label)
 
 func _button_at(p: Vector2) -> String:
@@ -111,9 +125,12 @@ func _draw():
 		var b: Dictionary = buttons[k]
 		var label: String = _label_of(k)
 		if label == "": continue
-		var on: bool = b.id != -1 or (k == "run" and run_on)
-		draw_circle(b.pos, b.r, Color(0.08, 0.12, 0.06, 0.55) if not on else Color(0.95, 0.75, 0.3, 0.6))
+		var on: bool = b.id != -1 or (k == "run" and run_on) or (b.get("group", false) and k.substr(2) == sel_group)
+		var base_col := Color(0.08, 0.12, 0.06, 0.55)
+		if b.get("bar", false) and not b.get("group", false): base_col = Color(0.35, 0.08, 0.05, 0.6)
+		draw_circle(b.pos, b.r, base_col if not on else Color(0.95, 0.75, 0.3, 0.65))
 		draw_arc(b.pos, b.r, 0, TAU, 48, Color(1, 1, 1, 0.5), 2.0)
 		var fs := 22 if b.r > 40.0 else 18
+		if b.get("small", false): fs = 15
 		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
 		draw_string(font, b.pos + Vector2(-tw * 0.5, fs * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.95))

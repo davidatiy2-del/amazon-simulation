@@ -11,7 +11,9 @@ func _ready():
 	if a.size() > 1: out = a[1]
 	t0 = Time.get_ticks_msec()
 func snap(name: String):
-	get_viewport().get_texture().get_image().save_png(out + "/" + name + ".png"); print("shot ", name, " at ", (Time.get_ticks_msec() - t0) / 1000, " s")
+	var img := get_viewport().get_texture().get_image()
+	if img: img.save_png(out + "/" + name + ".png")
+	print("shot ", name, " at ", (Time.get_ticks_msec() - t0) / 1000, " s")
 func spawn(kind: String, p: Vector3) -> Animal:
 	var n := Animal.new(); g.animals.add_child(n); n.setup(Animals.KINDS[kind], g.hd, p); g.animals.list.append(n); return n
 var mode := ""
@@ -23,6 +25,10 @@ func _process(_dt: float):
 	if mode == "sea": return _sea()
 	if mode == "save": return _save_test()
 	if mode == "ram": return _ram_test()
+	if mode == "smoke": return _smoke()
+	if mode == "city": return _city_test()
+	if mode == "war": return _war_test()
+	if mode == "battle": return _battle_test()
 	if f == 4: snap("menu")
 	if f == 5: g._start(true); g.player.place(Vector3(70, 0, 40)); g.rig.yaw = 2.6; g.player.face = 2.6
 	if f > 5 and f < 14: g.player.move_in = Vector2(0, 1)
@@ -172,3 +178,140 @@ func _ram_test():
 		print("ship hull ", g.ship.hull, " sunk ", g.ship.is_sunk(), " player on boat ", g.player.boat != null, " swimming ", g.player.swimming)
 		var sh := SeaLife.Shark.new(); g.sea.add_child(sh); sh.setup(hd, g.player.position + Vector3(5, 0, 5)); g.sea.sharks.append(sh)
 	if f == 150: print("hp after the shark ", snappedf(g.player.hp, 0.1)); snap("ram"); get_tree().quit()
+
+# ---------------------------------------------------------------- version 3: the city, riding, the war
+func _smoke():
+	if f == 2: g._start(true); print("start ok; cities ", g.cities.keys(), " fleet ", g.fleet.size())
+	if f == 60:
+		var h: City = g.cities.home
+		print("home pop ", h.population(), " soldiers ", h.soldiers(), " horses ", h.horses_here(), " crowd ", g.crowd.stats, " looks ", g.crowd.looks.size())
+		for id in g.cities: print("  ", id, " pop ", g.cities[id].population(), " beasts ", g.cities[id].beasts_here(), " owner ", g.cities[id].owner_f)
+	if f == 61:
+		g._take_horse_test()
+	if f == 120:
+		print("player horse ", g.player.horse != null, " pos ", g.player.global_position)
+		var ok: bool = g.war.begin("pirate", {"knight": 10, "warrior": 30, "archer": 10}, {}, "conquer")
+		print("war begin ", ok, " aboard ", g.war.men_aboard(), " state ", g.war.state)
+	if f == 125:
+		if g.player.horse: g.dismount()
+		g.board(g.fleet[0])
+		var pc: City = g.cities.pirate
+		g.fleet[0].place(Vector3(float(pc.data.landing[0]), 0, float(pc.data.landing[1]) - 60.0), PI)
+	if f == 140: print("can land ", g.war.can_land()); g.war.land(); print("state ", g.war.state, " units ", g.war.units.size(), " tally ", g.war.tally())
+	if f == 145: g.war.set_order("all", "charge")
+	if f == 400: print("battle tally ", g.war.tally(), " morale ", g.war.morale, " gate ", g.war.gate_hp, " state ", g.war.state)
+	if f == 401: g.war.set_order("warrior", "ram")
+	if f == 900: print("battle tally ", g.war.tally(), " morale ", g.war.morale, " gate ", g.war.gate_hp, " state ", g.war.state, " lost ", g.war.lost, " killed ", g.war.killed)
+	if f == 901:
+		if g.war.state == "battle": g.war._victory("test")
+		g.war.decide("annex"); print("pirate owner ", g.cities.pirate.owner_f, " gold ", g.cities.home.gold)
+	if f == 905: g.war.set_order("all", "retreat")
+	if f == 1100:
+		print("aboard ", g.war.men_aboard(), " tally ", g.war.tally())
+		g.board(g.fleet[0]); print("war state ", g.war.state)
+		var h: City = g.cities.home
+		g.fleet[0].place(Vector3(float(h.data.landing[0]), 0, float(h.data.landing[1]) + 60.0), 0.0)
+	if f == 1110: print("home again: state ", g.war.state, " soldiers ", g.cities.home.soldiers(), " pop ", g.cities.home.population())
+	if f == 1115: g._save(); print("saved"); g._start(false); print("loaded: pirate owner ", g.cities.pirate.owner_f, " home pop ", g.cities.home.population())
+	if f == 1120: get_tree().quit()
+
+func _city_test():
+	var h: City = g.cities.home if g.cities.has("home") else null
+	if f == 2:
+		g._start(true); g.dn.time = 10.0; g.dn.apply()
+	if f == 3: g.rig.pitch = -0.18
+	if f == 10: snap("c1_castle"); print("crowd ", g.crowd.stats)
+	if f == 11:
+		var pl: Array = h.data.plaza
+		g.player.place(Vector3(float(pl[0]), 0, float(pl[1]) - 14.0)); g.player.face = 0.0; g.rig.yaw = 0.0; g.rig.pitch = -0.2
+	if f == 18: snap("c2_plaza"); print("crowd ", g.crowd.stats)
+	if f == 19:
+		g._take_horse_test(); g.rig.yaw = g.player.face
+	if f > 19 and f < 26: g.player.move_in = Vector2(0, 1); g.player.want_run = false
+	if f == 26: g.player.move_in = Vector2.ZERO
+	if f == 30:
+		g.rig.set_process(false)
+		var p: Vector3 = g.player.global_position; var fw := Vector3(sin(g.player.face), 0, cos(g.player.face))
+		g.rig.cam.global_position = p + fw * 4.5 + Vector3(fw.z, 0, -fw.x) * 2.5 + Vector3(0, 1.2, 0); g.rig.cam.look_at(p + Vector3(0, 0.6, 0))
+		snap("c3_ride")
+		g.rig.set_process(true)
+	if f == 31:
+		var st: Dictionary = h.data.stable
+		g.rig.set_process(false)
+		g.rig.cam.global_position = Vector3(float(st.x), h.gy + 14.0, float(st.z) - float(st.hz) - 16.0); g.rig.cam.look_at(Vector3(float(st.x), h.gy, float(st.z)))
+	if f == 36: snap("c4_stable"); g.rig.set_process(true)
+	if f == 37: g.hud.show_screen(""); g.skin_menu.open(g.look, "שמור")
+	if f == 42: snap("c5_skins")
+	if f == 43: g.skin_menu.visible = false; g.dismount(); g._place_at_castle(); g._open_council()
+	if f == 46: snap("c6_council")
+	if f == 47: g.council.close(); g._open_panel(); g.council.open_city(h, g.war)
+	if f == 50: snap("c7_city")
+	if f == 51: g.council.close(); get_tree().quit()
+
+func _war_test():
+	if f == 2:
+		g._start(true); g.dn.time = 9.5; g.dn.apply()
+		var ok: bool = g.war.begin("lost", {"knight": 30, "warrior": 50, "archer": 24}, {}, "conquer")
+		print("war ", ok, " aboard ", g.war.men_aboard())
+		g.board(g.fleet[0])
+		var tc: City = g.cities.lost
+		var lp := Vector3(float(tc.data.landing[0]), 0, float(tc.data.landing[1]))
+		g.fleet[0].place(lp + Vector3(0, 0, -95.0), 0.0)
+		for i in range(1, g.fleet.size()):
+			g.fleet[i].place(g.fleet[0].position + Vector3(((i % 2) * 2 - 1) * 16.0 * ((i + 1) / 2), 0, -26.0 * ((i + 1) / 2)), 0.0)
+		g.rig.yaw = 0.0
+	if f == 9: snap("w1_fleet"); print("can land ", g.war.can_land())
+	if f == 10: g.war.land(); print("units ", g.war.units.size(), " tally ", g.war.tally()); g.rig.yaw = g.player.face; g.rig.pitch = -0.25
+	if f == 16: snap("w2_landing"); print("crowd ", g.crowd.stats)
+	if f == 17: g.war.set_order("all", "charge"); g.player.hp = 100000.0
+	# fast forward the battle between pictures
+	if f in [18, 19, 20]:
+		for i in 25: g.war._battle(0.1); g.war._arrows(0.1)
+		g.player.global_position = g.war.units[0].pos if g.war.units.size() > 0 else g.player.global_position
+	if f == 24:
+		g.rig.set_process(false)
+		var c := Vector3.ZERO; var n := 0
+		for u in g.war.units:
+			if u.state != "dead" and u.state != "aboard": c += u.pos; n += 1
+		c /= maxf(1.0, n)
+		set_meta("bc", c)
+		g.rig.cam.global_position = c + Vector3(-18, 14, -22); g.rig.cam.look_at(c)
+	if f == 27: snap("w3_battle"); print("tally ", g.war.tally(), " morale ", g.war.morale)
+	if f == 28:
+		var c: Vector3 = get_meta("bc")
+		g.rig.cam.global_position = c + Vector3(6, 3.0, -9); g.rig.cam.look_at(c + Vector3(0, 1.0, 0))
+	if f == 31: snap("w4_battle_close")
+	if f == 32:
+		for i in 300:
+			g.war._battle(0.1); g.war._arrows(0.1)
+			if g.war.state != "battle": break
+		print("after: state ", g.war.state, " tally ", g.war.tally())
+		if g.war.state == "battle": g.war._victory("test")
+		g.rig.set_process(true)
+	if f == 36: g._show_victory()
+	if f == 39: snap("w5_victory")
+	if f == 40: get_tree().quit()
+
+# a whole battle, quickly (run with --fixed-fps 30): prints how it goes
+var bt_target := "north"
+func _battle_test():
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 3: bt_target = args[3]
+	if f == 2:
+		g._start(true)
+		var want := {"knight": 40, "warrior": 70, "archer": 40}
+		var ok: bool = g.war.begin(bt_target, want, {}, "conquer")
+		g.board(g.fleet[0])
+		var tc: City = g.cities[bt_target]
+		var lp := Vector3(float(tc.data.landing[0]), 0, float(tc.data.landing[1]))
+		var dir: Vector3 = (lp - tc.center()); dir.y = 0; dir = dir.normalized()
+		g.fleet[0].place(lp + dir * 70.0, atan2(-dir.x, -dir.z))
+		print("begin ", ok, " aboard ", g.war.men_aboard())
+	if f == 4: g.war.land(); print("landed: tally ", g.war.tally())
+	if f == 6: g.war.set_order("all", "charge"); g.player.hp = 100000.0
+	if f > 6 and f % 150 == 0:
+		var lost_n := 0
+		for k in g.war.lost: lost_n += int(g.war.lost[k])
+		print("t=%ds tally %s gate %d morale %d/%d lost %d killed %d state %s" % [f / 30, g.war.tally(), int(g.war.gate_hp), int(g.war.morale[0]), int(g.war.morale[1]), lost_n, g.war.killed, g.war.state])
+		if g.war.state != "battle": print("outcome after ", f / 30, " s"); get_tree().quit()
+	if f > 3600: print("no outcome after 120 s"); get_tree().quit()

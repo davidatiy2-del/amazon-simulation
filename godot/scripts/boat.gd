@@ -9,6 +9,13 @@ const KINDS := {
 		"len": 5.4, "wid": 2.4, "speed": 5.6, "fast": 8.2, "turn": 1.25, "accel": 1.1, "seat": Vector3(0, 0.38, -0.4), "cam": 7.5, "reach": 6.0},
 	"ship": {"name": "ספינת הציד", "model": "res://assets/pirate/ship-large.glb", "scale": 1.45, "sink": 1.55, "draft": 1.9,
 		"len": 19.0, "wid": 7.0, "speed": 7.5, "fast": 10.5, "turn": 0.42, "accel": 0.4, "seat": Vector3(0, 1.5, -4.0), "cam": 26.0, "reach": 14.0},
+	# your city's fleet: warships and transports for soldiers and horses
+	"war": {"name": "ספינת מלחמה", "model": "res://assets/pirate/ship-large.glb", "scale": 1.55, "sink": 1.6, "draft": 2.0,
+		"len": 20.0, "wid": 7.4, "speed": 8.0, "fast": 11.5, "turn": 0.44, "accel": 0.45, "seat": Vector3(0, 1.6, -4.3), "cam": 27.0, "reach": 15.0, "men": 30, "horses": 4},
+	"transport": {"name": "ספינת תובלה", "model": "res://assets/pirate/ship-medium.glb", "scale": 1.6, "sink": 1.3, "draft": 1.7,
+		"len": 16.0, "wid": 6.4, "speed": 7.6, "fast": 11.0, "turn": 0.48, "accel": 0.45, "seat": Vector3(0, 1.4, -3.5), "cam": 24.0, "reach": 13.0, "men": 50, "horses": 8},
+	"pirate": {"name": "ספינת שודדים", "model": "res://assets/pirate/ship-pirate-large.glb", "scale": 1.5, "sink": 1.6, "draft": 2.0,
+		"len": 20.0, "wid": 7.2, "speed": 7.8, "fast": 10.8, "turn": 0.45, "accel": 0.45, "seat": Vector3(0, 1.6, -4.3), "cam": 27.0, "reach": 15.0, "men": 30, "horses": 0},
 }
 var kind: String
 var K: Dictionary
@@ -28,6 +35,12 @@ var pitch := 0.0
 var roll := 0.0
 var depth_here := 0.0
 var tow := Vector3.ZERO     # a roped whale pulling the ship
+var leader: Boat = null     # in a fleet: the ship this one follows
+var slot := Vector2.ZERO    # where behind the leader (x: right, y: back), meters
+var anchored := false       # stopped where it is (the troops went ashore)
+var men := 0                # soldiers aboard
+var horses_aboard := 0
+var crew_key := ""          # how the soldiers on its deck look
 signal said(text: String)
 
 func setup(k: String, h: HeightData, pos: Vector3, y: float):
@@ -78,6 +91,8 @@ func _physics_process(dt: float):
 	if sunk_t >= 0.0:
 		_sinking(dt); return
 	var want_speed := 0.0
+	if driver == null and leader != null and not anchored and not leader.is_sunk():
+		_follow(dt); return
 	if driver != null and not driver.is_dead():
 		var d := driver._move_dir()
 		if d.length() > 0.1:
@@ -85,7 +100,7 @@ func _physics_process(dt: float):
 			var diff := angle_difference(yaw, want)
 			var facing := maxf(0.0, cos(diff))
 			turn = clampf(diff, -1.0, 1.0)
-			var fast := driver.want_run and (kind == "ship" or driver.stam > 3.0)
+			var fast := driver.want_run and (kind != "row" or driver.stam > 3.0)
 			want_speed = facing * d.length() * float(K.fast if fast else K.speed)
 			if fast and kind == "row": driver.stam = maxf(0.0, driver.stam - 6.0 * dt)
 		else:
@@ -109,6 +124,32 @@ func _physics_process(dt: float):
 		if fits(tx, tz, yaw) == "": position.x = tx; position.z = tz
 	_float(dt)
 
+# a fleet's ship keeps its place behind the leader, matching its speed, and turns toward its place
+func _follow(dt: float):
+	var lf := leader.forward(); var lr := Vector3(lf.z, 0, -lf.x)
+	var goal := leader.position - lf * slot.y + lr * slot.x
+	var to := goal - position; to.y = 0.0
+	var dist := to.length()
+	var want_speed := 0.0
+	if dist > 3.0:
+		var want := atan2(to.x, to.z)
+		var diff := angle_difference(yaw, want)
+		turn = clampf(diff, -1.0, 1.0)
+		want_speed = clampf(dist * 0.35 + leader.speed * 0.9, 0.0, float(K.fast) * 1.08) * maxf(0.0, cos(diff))
+	else:
+		turn = clampf(angle_difference(yaw, leader.yaw), -1.0, 1.0)
+		want_speed = leader.speed
+	yaw += turn * dt * float(K.turn) * 1.3 * (0.35 + minf(1.0, absf(speed) / 3.0) * 0.65)
+	speed = move_toward(speed, want_speed, dt * float(K.accel) * 1.6)
+	if absf(speed) > 0.01:
+		var nx := position.x + sin(yaw) * speed * dt; var nz := position.z + cos(yaw) * speed * dt
+		if fits(nx, nz, yaw) == "": position.x = nx; position.z = nz
+		else: speed *= 0.5; yaw += dt * 0.6
+	_float(dt)
+
+func capacity() -> int: return int(K.get("men", 15))
+func horse_room() -> int: return int(K.get("horses", 0))
+
 # rides the waves: up and down with the water, tilting with it
 func _float(dt: float):
 	depth_here = hd.water_depth(position.x, position.z)
@@ -121,13 +162,13 @@ func _float(dt: float):
 	var k := 1.0 if dt == 0.0 else minf(1.0, dt * 3.0)
 	bob_y = lerpf(bob_y, (hb + hs + hr + hl) * 0.25, k)
 	pitch = lerpf(pitch, atan2(hs - hb, L * 2.0) * 0.8, k)
-	roll = lerpf(roll, atan2(hl - hr, W * 2.0) * 0.8 - turn * minf(1.0, absf(speed) / 6.0) * (0.06 if kind == "ship" else 0.03), k)
+	roll = lerpf(roll, atan2(hl - hr, W * 2.0) * 0.8 - turn * minf(1.0, absf(speed) / 6.0) * (0.06 if kind != "row" else 0.03), k)
 	position.y = bob_y
 	rotation = Vector3(pitch, yaw, roll)
 
 # a whale's blow, or rocks
 func damage(amount: float) -> void:
-	if kind != "ship" or sunk_t >= 0.0: return
+	if kind == "row" or sunk_t >= 0.0: return
 	hull = maxf(0.0, hull - amount)
 	if hull <= 0.0:
 		sunk_t = 0.0
@@ -149,5 +190,5 @@ func is_sunk() -> bool: return sunk_t >= 0.0
 
 # the ship's hull mends slowly near its harbor
 func _process(dt: float):
-	if kind == "ship" and sunk_t < 0.0 and hull < 100.0 and Vector2(position.x - home.x, position.z - home.z).length() < 60.0:
+	if kind != "row" and sunk_t < 0.0 and hull < 100.0 and Vector2(position.x - home.x, position.z - home.z).length() < 60.0:
 		hull = minf(100.0, hull + 4.0 * dt)
