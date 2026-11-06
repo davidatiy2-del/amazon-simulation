@@ -19,6 +19,8 @@ static var decks: Array = []   # walkable boxes: {x, z, yaw, hx, hz, top}
 static var boxes: Array = []   # what blocks the way in the cities: [x, z, yaw, hx, hz] (buildings, walls, gates' sides)
 static var bgrid := {}         # 16 m cells -> box indexes
 static var gate_boxes := {}    # "city/gate" -> index of the box that closes it (or -1 while open)
+static var city_boxes: Array = []   # the cities' buildings, walls and towers: [x, z, yaw, hx, hz] (solid for the physics)
+static var gate_listener: Callable  # told "city/gate" whenever a gate is shut or opened (scripts/world/world_collision.gd)
 
 func _init():
 	if H.is_empty():
@@ -30,9 +32,12 @@ func _init():
 			grid[key].append(k)
 		var p = JSON.parse_string(FileAccess.get_file_as_string("res://world/places.json"))
 		places = p if p is Dictionary else {}
-		for hb in places.get("harbors", []):
+		# the planks of the harbors' piers and of the fleet's piers
+		for hb in places.get("harbors", []) + places.get("piers", []):
 			var z0: float = hb.z0; var z1: float = hb.z1
 			decks.append({"x": float(hb.x), "z": (z0 + z1) * 0.5, "yaw": 0.0, "hx": 2.5, "hz": absf(z1 - z0) * 0.5, "top": float(hb.top)})
+		for id in places.get("cities", {}):
+			for bx in places.cities[id].get("boxes", []): city_boxes.append(bx)
 
 func _at(i: int, j: int) -> float: return H[clampi(j, 0, NZ - 1) * NX + clampi(i, 0, NX - 1)]
 # the ground (terrain only)
@@ -77,10 +82,11 @@ static func add_box(b: Array) -> int:
 static func set_gate(city: String, g: Dictionary, shut: bool) -> void:
 	var key := city + "/" + str(g.id)
 	if shut:
-		if gate_boxes.get(key, -1) >= 0: boxes[gate_boxes[key]][3] = float(g.w) * 0.5 + 0.4; return
-		gate_boxes[key] = add_box([float(g.x), float(g.z), float(g.yaw), float(g.w) * 0.5 + 0.4, 1.6])
+		if gate_boxes.get(key, -1) >= 0: boxes[gate_boxes[key]][3] = float(g.w) * 0.5 + 0.4
+		else: gate_boxes[key] = add_box([float(g.x), float(g.z), float(g.yaw), float(g.w) * 0.5 + 0.4, 1.6])
 	elif gate_boxes.get(key, -1) >= 0:
 		boxes[gate_boxes[key]][3] = 0.0   # (kept in the grid, but no longer in the way)
+	if gate_listener.is_valid(): gate_listener.call(key)
 
 # is a point inside something that blocks (r: the body's radius)
 func blocked(x: float, z: float, r: float) -> bool:

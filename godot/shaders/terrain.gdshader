@@ -1,7 +1,7 @@
 shader_type spatial;
 // The ground: colors painted per vertex by the world builder (grass, forest floor, mud, sand, rock), with a detail
 // texture at two scales so it does not look flat up close or tiled from afar.
-uniform sampler2D detail : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D detail : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float near_scale = 0.22;
 uniform float far_scale = 0.031;
 varying vec3 wpos;

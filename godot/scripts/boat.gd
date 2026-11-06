@@ -41,6 +41,8 @@ var anchored := false       # stopped where it is (the troops went ashore)
 var men := 0                # soldiers aboard
 var horses_aboard := 0
 var crew_key := ""          # how the soldiers on its deck look
+var model_local := Transform3D()
+var smooth := Smooth.new()  # draws the model between physics ticks
 signal said(text: String)
 
 func setup(k: String, h: HeightData, pos: Vector3, y: float):
@@ -49,6 +51,8 @@ func setup(k: String, h: HeightData, pos: Vector3, y: float):
 	model.scale = Vector3.ONE * float(K.scale)
 	model.position.y = -float(K.sink)
 	add_child(model)
+	model_local = model.transform
+	model.top_level = true           # (placed every frame between physics ticks: scripts/world/smooth.gd)
 	for m in model.find_children("*", "MeshInstance3D", true, false):
 		(m as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	home = Vector3(pos.x, 0, pos.z); home_yaw = y
@@ -57,6 +61,7 @@ func setup(k: String, h: HeightData, pos: Vector3, y: float):
 func place(pos: Vector3, y: float):
 	position = Vector3(pos.x, WorldShape.WATER, pos.z); yaw = y; speed = 0.0
 	_float(0.0)
+	smooth.snap(self, model, model_local)
 
 func label() -> String: return K.name
 
@@ -86,6 +91,12 @@ func fits(x: float, z: float, y: float) -> String:
 	return ""
 
 func _physics_process(dt: float):
+	_tick(dt)
+	smooth.tick(self)
+
+func visual_transform() -> Transform3D: return model.global_transform * model_local.affine_inverse() if model else global_transform
+
+func _tick(dt: float):
 	if dt > 0.1: dt = 0.1
 	bump_t -= dt
 	if sunk_t >= 0.0:
@@ -190,5 +201,6 @@ func is_sunk() -> bool: return sunk_t >= 0.0
 
 # the ship's hull mends slowly near its harbor
 func _process(dt: float):
+	smooth.draw(model)
 	if kind != "row" and sunk_t < 0.0 and hull < 100.0 and Vector2(position.x - home.x, position.z - home.z).length() < 60.0:
 		hull = minf(100.0, hull + 4.0 * dt)

@@ -38,6 +38,7 @@ var look: Dictionary = {}      # the chief's look
 var pending_fresh := false
 var shot_mode := ""
 var sound: Sound
+var collision: WorldCollision
 
 func _ready():
 	_keys()
@@ -72,6 +73,8 @@ func _process(dt: float):
 		var st := ResourceLoader.load_threaded_get_status(WORLD, prog)
 		if st == ResourceLoader.THREAD_LOAD_LOADED:
 			world = (ResourceLoader.load_threaded_get(WORLD) as PackedScene).instantiate()
+			var old_body := world.get_node_or_null("GroundBody")
+			if old_body: world.remove_child(old_body); old_body.free()   # (the physics world is built by WorldCollision)
 			add_child(world)
 			_build()
 		elif st == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
@@ -87,7 +90,7 @@ func _process(dt: float):
 	if player.boat and player.boat.is_sunk():
 		var sb := player.boat
 		_drop_from_boat()
-		player.global_position = Vector3(sb.position.x + 3.0, WorldShape.WATER - 1.0, sb.position.z)
+		player.put(Vector3(sb.position.x + 3.0, WorldShape.WATER - 1.0, sb.position.z))
 		player.swimming = true
 	var mv := touch.move_vector()
 	var kv := Input.get_vector("left", "right", "back", "fwd")
@@ -252,6 +255,10 @@ func _build():
 		cities[id] = c; n += 1
 	_make_boats()
 	sea.ship = ship
+	# the solid world for the physics: ground, piers, the cities' buildings and walls, gates, trunks
+	collision = WorldCollision.new(); add_child(collision)
+	collision.build(get_world_3d(), hd, world)
+	player.place(player.global_position)
 	war = War.new(); war.game = self; war.crowd = crowd; war.cities = cities; war.fleet = fleet; war.player = player; add_child(war)
 	war.said.connect(func(t): hud.msg(t))
 	war.sound = sound
@@ -604,11 +611,13 @@ func dismount():
 
 # ---- boats ----
 func boat_near(p: Vector3, r: float) -> Boat:
-	var best: Boat = null; var bd := r
+	var best: Boat = null; var bd := 1e9
 	for b in boats:
 		if b.is_sunk() or b.driver != null: continue
+		# a big ship can be boarded from anywhere along the pier it is moored at
+		var reach := r if b.kind == "row" else r + 2.5
 		var d := b.dist_to(p)
-		if d < bd and absf(p.y - b.position.y) < 4.0: bd = d; best = b
+		if d < reach and d < bd and absf(p.y - b.position.y) < 4.0: bd = d; best = b
 	return best
 
 func board(b: Boat):
@@ -645,15 +654,15 @@ func leave_boat():
 	var spot := landing_spot()
 	if spot == Vector3.INF: return
 	_drop_from_boat()
-	player.global_position = spot
-	player.vy = 0.0
+	player.put(spot)
+	rig.snap()
 	hud.msg("ירדת לחוף")
 
 # the army lands: the chief steps ashore at the given place
 func leave_boat_to(p: Vector3):
 	_drop_from_boat()
-	player.global_position = p
-	player.vy = 0.0
+	player.put(p)
+	rig.snap()
 
 func _drop_from_boat():
 	var b := player.boat

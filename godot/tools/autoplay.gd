@@ -30,6 +30,10 @@ func _process(_dt: float):
 	if mode == "war": return _war_test()
 	if mode == "battle": return _battle_test()
 	if mode == "tour": return _tour()
+	if mode == "touch": return _touch()
+	if mode == "walk": return _walk_test()
+	if mode == "stand": return _stand_test()
+	if mode == "deer": return _deer_test()
 	if f == 4: snap("menu")
 	if f == 5: g._start(true); g.player.place(Vector3(70, 0, 40)); g.rig.yaw = 2.6; g.player.face = 2.6
 	if f > 5 and f < 14: g.player.move_in = Vector2(0, 1)
@@ -334,7 +338,27 @@ func _tour():
 		g.rig.set_process(false)
 		var c := h.center()
 		g.rig.cam.global_position = c + Vector3(-70, 55, 125); g.rig.cam.look_at(c + Vector3(0, 0, 10))
-	if f == 18: snap("t1_city_air")
+	if f == 18:
+		snap("t1_city_air")
+		for bk in g.crowd.mms:
+			var mmi: MultiMeshInstance3D = g.crowd.mms[bk]
+			if not mmi.visible: continue
+			var mm := mmi.multimesh
+			var ab: AABB = mm.mesh.get_aabb() if mm.mesh else AABB()
+			if bk.begins_with("a_") or ab.size.length() > 8.0: print("bucket ", bk, " n ", mm.visible_instance_count, " mesh aabb ", ab.size, " mmi scale ", mmi.global_transform.basis.get_scale())
+		for ref in g.crowd.bound:
+			var pu: Node3D = g.crowd.bound[ref]
+			if pu.visible: print("puppet ", g.crowd.bound_key[ref], " at ", pu.global_position, " scale ", pu.global_transform.basis.get_scale())
+		for hz in g.horses: print("horse ", hz.global_position)
+		for a in g.animals.list: print("animal ", a.kind.name, " at ", a.global_position, " scale ", a.model.scale if a.model else "")
+		# anything big drawn near the city
+		var hc: Vector3 = g.cities.home.center()
+		for n in g.get_tree().root.find_children("*", "GeometryInstance3D", true, false):
+			var gi := n as GeometryInstance3D
+			if not gi.is_visible_in_tree() or gi is MultiMeshInstance3D: continue
+			var ab := gi.global_transform * gi.get_aabb()
+			if ab.size.length() > 25.0 and ab.get_center().distance_to(hc) < 120.0 and not String(gi.get_path()).contains("Cities") and not String(gi.get_path()).contains("Ground") and not String(gi.get_path()).contains("Plants"):
+				print("BIG ", gi.get_path(), " size ", ab.size, " at ", ab.get_center())
 	if f == 19:
 		var pl: Array = h.data.plaza
 		var c := Vector3(float(pl[0]), h.gy, float(pl[1]))
@@ -353,3 +377,150 @@ func _tour():
 		g.rig.cam.global_position = b.position + Vector3(-50, 18, -45); g.rig.cam.look_at(b.position + Vector3(10, 0, 0))
 	if f == 40: snap("t4_fleet")
 	if f == 41: get_tree().quit()
+# ---------------------------------------------------------------- real thumbs: touches through the input system
+var tl: Array = []          # log lines
+var last_p := Vector3.ZERO
+var stuck_n := 0
+# (positions are given in the screen's canvas units; the window may be scaled, so they are turned into its pixels)
+func _touch_ev(idx: int, pos: Vector2, down: bool):
+	var xf := get_viewport().get_final_transform()
+	var e := InputEventScreenTouch.new(); e.index = idx; e.position = xf * pos; e.pressed = down
+	Input.parse_input_event(e)
+func _drag_ev(idx: int, pos: Vector2, rel: Vector2):
+	var xf := get_viewport().get_final_transform()
+	var e := InputEventScreenDrag.new(); e.index = idx; e.position = xf * pos; e.relative = xf.basis_xform(rel)
+	Input.parse_input_event(e)
+func _touch():
+	var vs: Vector2 = g.touch.size
+	var base := Vector2(150, vs.y - 150)
+	if f == 3: g._start(true)
+	if f < 6: return
+	var k := f - 6
+	var seg := k / 120              # each 4 s: another direction
+	var ph := k % 120
+	var dirs := [Vector2(0, -1), Vector2(1, -1), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1), Vector2(-1, 1), Vector2(-1, 0), Vector2(-1, -1), Vector2(0, -1), Vector2(0, -1)]
+	if seg >= dirs.size():
+		_touch_ev(0, base, false)
+		print("TOUCH DONE stuck_frames=", stuck_n)
+		get_tree().quit(); return
+	var dv: Vector2 = (dirs[seg] as Vector2).normalized() * 60.0
+	if ph == 0: _touch_ev(0, base, true)
+	if ph == 1: _drag_ev(0, base + dv, dv)
+	if ph == 110: _touch_ev(0, base + dv, false)
+	# the other thumb: strike, act, turn the camera
+	if ph == 40: _touch_ev(1, Vector2(vs.x - 120, vs.y - 125), true)
+	if ph == 42: _touch_ev(1, Vector2(vs.x - 120, vs.y - 125), false)
+	if ph == 70: _touch_ev(1, Vector2(vs.x - 245, vs.y - 215), true)
+	if ph == 72: _touch_ev(1, Vector2(vs.x - 245, vs.y - 215), false)
+	if ph == 80: _touch_ev(2, Vector2(vs.x * 0.7, vs.y * 0.4), true)
+	if ph > 80 and ph < 90: _drag_ev(2, Vector2(vs.x * 0.7 + (ph - 80) * 6, vs.y * 0.4), Vector2(6, 0))
+	if ph == 90: _touch_ev(2, Vector2(vs.x * 0.7 + 60, vs.y * 0.4), false)
+	var pl: Player = g.player
+	var p := pl.position
+	var gr: float = g.hd.ground(p.x, p.z)
+	var pushing := ph > 2 and ph < 110 and pl.state == "move"
+	if pushing and p.distance_to(last_p) < 0.01: stuck_n += 1
+	if ph % 15 == 0:
+		print("seg %d ph %3d pos (%.1f, %.2f, %.1f) ground %.2f float %.2f state %s swim %s spd %.1f move_in %s blocked %s act '%s' rig_yaw %.2f" % [seg, ph, p.x, p.y, p.z, gr, p.y - gr, pl.state, pl.swimming, pl.speed_now, pl.move_in, g.hd.blocked(p.x, p.z, 0.3), g.touch.act_label, g.rig.yaw])
+	last_p = p
+
+# ---------------------------------------------------------------- walking the city's streets to its gate, stable and piers
+var wroute: PackedVector3Array = PackedVector3Array()
+var wi := 0
+var wgoal := 0
+var wbest := 1e9
+var wbest_f := 0
+var wlog := []
+func _walk_goals() -> Array:
+	var h: City = g.cities.home
+	var goals := []
+	goals.append(["stable", Vector3(float(h.data.stable.gate[0]), 0, float(h.data.stable.gate[1]))])
+	var plaza := Vector3(float(h.data.plaza[0]), 0, float(h.data.plaza[1])) if h.data.plaza is Array else h.center()
+	for gt in h.data.gates:
+		goals.append(["plaza", plaza])
+		goals.append(["gate " + str(gt.id), Vector3(float(gt.x), 0, float(gt.z))])
+	var pp: Dictionary = g.hd.places.piers[0]
+	goals.append(["plaza", plaza])
+	goals.append(["gate sea", Vector3(float(h.data.gates[0].x), 0, float(h.data.gates[0].z))])
+	goals.append(["pier start", Vector3(float(pp.x), 0, float(pp.z0) + 3.0)])
+	return goals
+func _walk_test():
+	if f == 3:
+		g._start(true); print("start at ", g.player.global_position)
+		g.player.died.connect(func(c): print("DIED: ", c, " at ", g.player.global_position, " frame ", f))
+		var orig_hurt = g.player.hurt
+	if f > 3 and g.player.hp < 99.0 and f % 30 == 0: print("  hp %.1f at %s" % [g.player.hp, g.player.global_position])
+	if f < 6: return
+	var goals := _walk_goals()
+	var pl: Player = g.player
+	if wgoal >= goals.size():
+		# the last: out along the last pier to the warship
+		var pp: Dictionary = g.hd.places.piers[0]
+		var end := Vector3(float(pp.x), 0, float(pp.z1) - 4.0)
+		var to := end - pl.global_position; to.y = 0
+		_steer(to)
+		if f % 30 == 0: print("PIER pos %s y %.2f swim %s act '%s'" % [pl.global_position, pl.global_position.y, pl.swimming, pl.action_here().get("label", "")])
+		if to.length() < 1.5 or f > wbest_f + 900:
+			print("WALK END at pier end: dist %.1f swim %s y %.2f action '%s'" % [to.length(), pl.swimming, pl.global_position.y, pl.action_here().get("label", "")])
+			for bt in g.fleet: print("   fleet ", bt.kind, " at ", bt.position, " dist ", bt.dist_to(pl.global_position), " K.len ", bt.K.len, " wid ", bt.K.wid)
+			get_tree().quit()
+		return
+	var goal: Vector3 = goals[wgoal][1]
+	if wroute.is_empty():
+		wroute = g.cities.home._route(pl.global_position, goal) if not goals[wgoal][0].begins_with("pier") else PackedVector3Array()
+		wroute.append(goal)
+		wi = 0; wbest = 1e9; wbest_f = f
+		print("-> ", goals[wgoal][0], " route ", wroute.size(), " pts")
+	var tgt: Vector3 = wroute[min(wi, wroute.size() - 1)]
+	var to := tgt - pl.global_position; to.y = 0
+	if to.length() < 1.2 and wi < wroute.size() - 1: wi += 1
+	var left := (goal - pl.global_position); left.y = 0
+	if left.length() < wbest - 0.5: wbest = left.length(); wbest_f = f
+	_steer(to)
+	var inside := WorldCollision.overlaps(pl.global_position, 0.2, 1.4)
+	if inside: print("  INSIDE something at ", pl.global_position)
+	if f - wbest_f == 60:
+		var cnt := pl.get_slide_collision_count()
+		var cols := []
+		for ci in cnt:
+			var kc := pl.get_slide_collision(ci)
+			cols.append([kc.get_normal(), kc.get_collider_rid(), kc.get_position()])
+		print("  no progress: state %s vel %s floor %s wall %s ceil %s move_in %s cols %s ground %.2f" % [pl.state, pl.velocity, pl.is_on_floor(), pl.is_on_wall(), pl.is_on_ceiling(), pl.move_in, cols, g.hd.ground(pl.global_position.x, pl.global_position.z)])
+	if left.length() < 2.0 or f - wbest_f > 150:
+		print("   %s: %s (left %.1f m, frame %d) pos %s" % [goals[wgoal][0], "REACHED" if left.length() < 2.0 else "STUCK", left.length(), f, pl.global_position])
+		wgoal += 1; wroute = PackedVector3Array(); wbest_f = f
+func _steer(to: Vector3):
+	var pl: Player = g.player
+	var want := atan2(to.x, to.z)
+	g.rig.yaw = lerp_angle(g.rig.yaw, want, 0.2)
+	var rel := angle_difference(g.rig.yaw, want)
+	pl.move_in = Vector2(-sin(rel), cos(rel)) if to.length() > 0.3 else Vector2.ZERO
+	pl.want_run = true
+
+func _stand_test():
+	if f == 3:
+		g._start(true)
+		g.player.died.connect(func(c): print("DIED: ", c, " at ", g.player.global_position, " frame ", f))
+		g.player.place(Vector3(156.7, 0, 301.4))
+	if f > 3 and f % 60 == 0: print("f %d hp %.1f state %s pos %s food %.1f water %.1f" % [f, g.player.hp, g.player.state, g.player.global_position, g.player.food, g.player.water])
+	if f > 3200: get_tree().quit()
+
+var deers := []
+func _deer_test():
+	var h: City = g.cities.get("home") if g.cities.has("home") else null
+	if f == 9: g._start(true); g.dn.time = 12.0; g.dn.apply()
+	if f == 12:
+		var c := h.center() + Vector3(0, 0, -60)
+		g.player.place(c)
+		g.animals.calm = true
+		for k in ["deer", "fox", "wolf"]:
+			var a := spawn(k, c + Vector3(-4 + deers.size() * 4, 0, 8))
+			deers.append(a)
+		g.rig.set_process(false)
+		g.rig.cam.global_position = c + Vector3(0, 4, -6); g.rig.cam.look_at(c + Vector3(0, 1, 8))
+	if f >= 13 and f <= 20:
+		for a in deers:
+			var mi: MeshInstance3D = a.find_children("*", "MeshInstance3D", true, false)[0]
+			print("f %d %s aabb %s vis %s" % [f, a.kind.name, (mi.global_transform * mi.get_aabb()).size, a.visible])
+	if f == 20: snap("deer_test")
+	if f == 21: get_tree().quit()
