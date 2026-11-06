@@ -28,6 +28,7 @@ static func apply(plants: Node) -> void:
 				var sm := ShaderMaterial.new(); sm.shader = shader
 				sm.set_shader_parameter("albedo", bm.albedo_color)
 				sm.set_shader_parameter("use_tex", bm.albedo_texture != null)
+				sm.set_shader_parameter("use_vcol", bm.vertex_color_use_as_albedo)
 				if bm.albedo_texture: sm.set_shader_parameter("albedo_tex", bm.albedo_texture)
 				var cut := bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
 				sm.set_shader_parameter("cutout", cut)

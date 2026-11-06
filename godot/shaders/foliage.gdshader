@@ -5,6 +5,7 @@ render_mode cull_disabled;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform bool use_tex = false;
+uniform bool use_vcol = false;       // the plant's colors painted on its vertices
 uniform bool cutout = false;
 uniform float alpha_cut = 0.5;
 uniform float sway = 0.06;          // how much it bends (a ratio of its height)
@@ -25,9 +26,10 @@ void vertex() {
 void fragment() {
 	vec4 c = albedo;
 	if (use_tex) c *= texture(albedo_tex, UV);
+	if (use_vcol) c.rgb *= COLOR.rgb;
 	if (cutout && c.a < alpha_cut) discard;
 	ALBEDO = c.rgb;
 	ROUGHNESS = roughness;
 	SPECULAR = 0.25;
-	BACKLIGHT = vec3(0.18, 0.22, 0.08);   // light through the leaves
+	BACKLIGHT = vec3(0.07, 0.09, 0.03);   // a little light through the leaves
 }

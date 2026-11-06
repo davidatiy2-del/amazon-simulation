@@ -38,7 +38,7 @@ func _ready():
 	env.fog_enabled = true; env.fog_density = 0.0016; env.fog_aerial_perspective = 0.55; env.fog_sky_affect = 0.12
 	env.fog_height = 1.5; env.fog_height_density = 0.025
 	env.glow_enabled = true; env.glow_intensity = 0.4; env.glow_bloom = 0.05; env.glow_hdr_threshold = 1.0
-	env.adjustment_enabled = true; env.adjustment_saturation = 1.18; env.adjustment_contrast = 1.06
+	env.adjustment_enabled = true; env.adjustment_saturation = 1.1; env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
 	sun = DirectionalLight3D.new(); sun.name = "Sun"; sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
