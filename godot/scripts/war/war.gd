@@ -629,6 +629,11 @@ func _step(u: Unit, delta: Vector3):
 			var l := dd.length()
 			if l < min_d and l > 0.001: np += dd / l * (min_d - l) * 0.5
 	if hd.water_depth(np.x, np.z) > 1.0: return
+	# and apart from the chief (his own soldiers make way; enemies are held off by his blows)
+	if player and u.side == 0 and player.horse == null:
+		var pd := Vector3(np.x - player.global_position.x, 0, np.z - player.global_position.z)
+		var pl := pd.length(); var pm := u.radius + 0.45
+		if pl < pm and pl > 0.001: np += pd / pl * (pm - pl)
 	np.y = hd.ground(np.x, np.z)
 	u.pos = np
 

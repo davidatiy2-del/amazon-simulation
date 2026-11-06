@@ -25,6 +25,7 @@ var _queue: Array = []       # shapes waiting to be baked
 var _makers := 0
 var baker: Node3D            # where puppets are made to be baked
 var stats := {"near": 0, "far": 0}
+var focus_pt := Vector3.INF  # what the camera looks at (the chief): whoever stands in between is not drawn
 
 func _ready():
 	process_priority = 100   # after everyone has handed in
@@ -66,6 +67,11 @@ func _process(dt: float):
 	# who is near: sorted by distance, the closest get puppets
 	var near: Array = []
 	var far2 := far_dist * far_dist
+	var seg2 := Vector2.ZERO; var seg_l := 0.0; var seg_l2 := 0.0
+	if focus_pt != Vector3.INF:
+		var sv := Vector2(focus_pt.x - cp.x, focus_pt.z - cp.z); seg_l = sv.length()
+		if seg_l > 0.01: seg2 = sv / seg_l
+		seg_l2 = seg_l * seg_l + 4.0
 	var nd2 := near_dist * near_dist
 	var vis: Array = []
 	var close: Array = []
@@ -73,6 +79,12 @@ func _process(dt: float):
 		var p: Vector3 = it[2]
 		var d2 := cp.distance_squared_to(p)
 		if d2 > far2: continue
+		# between the camera and the chief (or right at the lens): not drawn, so nobody hides him or fills the screen
+		if d2 < seg_l2:
+			# (on the ground plane: people are upright, the camera looks down at them)
+			var rel := Vector2(p.x - cp.x, p.z - cp.z)
+			var tt := rel.dot(seg2)
+			if tt > -0.3 and tt < seg_l - 0.9 and (rel - seg2 * tt).length_squared() < 0.5: continue
 		# behind the camera and not close: skip
 		if d2 > 100.0 and (p - cp).dot(fwd) < -6.0: continue
 		vis.append([d2, it])

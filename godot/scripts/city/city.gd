@@ -525,6 +525,14 @@ func _process(dt: float):
 				if p.state == "do" or (p.state == "in" and h == 6): p.t = _rng.randf_range(0.0, 25.0)
 		if h == 0: _new_day()
 	for p: Person in people: _tick_person(p, dts)
+	# personal space: nobody stands inside the chief (they step aside as he passes)
+	if dist < 80.0 and player and player.boat == null:
+		for p: Person in people:
+			if p.state != "walk" and p.state != "do": continue
+			var dx := p.pos.x - pp.x; var dz := p.pos.z - pp.z
+			var d2 := dx * dx + dz * dz
+			if d2 < 1.96 and d2 > 0.0001:
+				var d := sqrt(d2); p.pos.x = pp.x + dx / d * 1.4; p.pos.z = pp.z + dz / d * 1.4
 	_tick_horses(dts)
 	_tick_beasts(dts)
 	if dist < crowd.far_dist + 120.0: _draw()

@@ -31,7 +31,7 @@ var hd := HeightData.new()
 var whales_taken := 0
 var oil := 0
 var wave_t := 0.0
-var fog_now := 0.0028
+var fog_now := 0.0016
 var sailed := false
 var day_last := -1
 var look: Dictionary = {}      # the chief's look
@@ -100,6 +100,7 @@ func _process(dt: float):
 	var lk := touch.take_look()
 	rig.turn(lk.x * 0.006, lk.y * 0.004)
 	player.cam_yaw = rig.yaw
+	crowd.focus_pt = rig.focus if player.boat == null else Vector3.INF
 	var a := player.action_here()
 	touch.set_act(a.get("label", ""))
 	var b := player.boat
@@ -198,7 +199,7 @@ func _air(dt: float):
 	if p.z < 470.0: dz = 470.0 - p.z
 	elif p.z > 1540.0: dz = p.z - 1540.0
 	var sea_k := 1.0 - clampf(dz / 200.0, 0.0, 1.0)
-	var base := 0.0028 if quality != "low" else 0.0045
+	var base := 0.0016 if quality != "low" else 0.0032
 	var want := lerpf(base, base * 0.5, sea_k)
 	if p.z > 1540.0: want = lerpf(want, base * 0.75, clampf(dz / 200.0, 0.0, 1.0))
 	fog_now = lerpf(fog_now, want, minf(1.0, dt * 0.5))
@@ -259,6 +260,19 @@ func _build():
 		cities[id] = c; n += 1
 	_make_boats()
 	sea.ship = ship
+	# the ground's texture and relief
+	var gnd := world.get_node_or_null("Ground")
+	if gnd and gnd.get_child_count() > 0:
+		var gm := (gnd.get_child(0) as MeshInstance3D).material_override as ShaderMaterial
+		if gm == null and (gnd.get_child(0) as MeshInstance3D).mesh: gm = (gnd.get_child(0) as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
+		if gm:
+			gm.set_shader_parameter("grass_tex", load("res://assets/terrain/grass_detail.png"))
+			gm.set_shader_parameter("ground_tex", load("res://assets/terrain/ground_detail.png"))
+			gm.set_shader_parameter("grass_nrm", load("res://assets/terrain/grass_normal.png"))
+			gm.set_shader_parameter("ground_nrm", load("res://assets/terrain/ground_normal.png"))
+			gm.set_shader_parameter("has_tex", true)
+	# the plants in the wind (not on the weakest setting)
+	if quality != "low": Foliage.apply(world.get_node_or_null("Plants"))
 	# the solid world for the physics: ground, piers, the cities' buildings and walls, gates, trunks
 	collision = WorldCollision.new(); add_child(collision)
 	collision.build(get_world_3d(), hd, world)
@@ -792,7 +806,7 @@ func _apply_quality():
 	vp.scaling_3d_scale = {"high": 0.9, "med": 0.75, "low": 0.6}[quality]
 	vp.msaa_3d = Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED
 	dn.env.glow_enabled = quality != "low"
-	fog_now = 0.0028 if quality != "low" else 0.0045
+	fog_now = 0.0016 if quality != "low" else 0.0032
 	dn.env.fog_density = fog_now
 	rig.cam.far = {"high": 900.0, "med": 600.0, "low": 380.0}[quality]
 	# the crowds: how many in full, how far they are drawn

@@ -179,6 +179,11 @@ func set_quality(q: String):
 
 func show_screen(name: String):
 	for k in screens: screens[k].visible = k == name
+	# the game's own lines only while playing (or paused over it)
+	var playing := name == "" or name == "pause"
+	for n in [_bars_box, clock, trophies, fps, city_label, nav, war_label]:
+		if n: n.visible = playing
+	if not playing: gate_row.visible = false
 	if name == "menu":
 		var cont: Button = screens.menu.find_child("Cont", true, false)
 		cont.visible = has_save

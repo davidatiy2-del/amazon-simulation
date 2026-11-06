@@ -225,7 +225,13 @@ func _city_test():
 	if f == 2:
 		g._start(true); g.dn.time = 10.0; g.dn.apply()
 	if f == 3: g.rig.pitch = -0.18
-	if f == 10: snap("c1_castle"); print("crowd ", g.crowd.stats)
+	if f == 10:
+		snap("c1_castle"); print("crowd ", g.crowd.stats)
+		var cp: Vector3 = g.rig.cam.global_position
+		print("cam ", cp, " focus_pt ", g.crowd.focus_pt, " player ", g.player.global_position, " avatar ", g.player.avatar.global_position, " face ", g.player.face, " rig yaw ", g.rig.yaw)
+		for ref in g.crowd.bound:
+			var pu: Node3D = g.crowd.bound[ref]
+			if pu.visible and pu.global_position.distance_to(cp) < 7.0: print("  near puppet ", g.crowd.bound_key[ref], " at ", pu.global_position, " d ", pu.global_position.distance_to(cp))
 	if f == 11:
 		var pl: Array = h.data.plaza
 		g.player.place(Vector3(float(pl[0]), 0, float(pl[1]) - 14.0)); g.player.face = 0.0; g.rig.yaw = 0.0; g.rig.pitch = -0.2
