@@ -28,6 +28,10 @@ Downloaded from https://github.com/KayKit-Game-Assets. See `godot/assets/kaykit/
 - Mini Characters (`godot/assets/nf/mini_*`)
 - Pirate Kit 2.1 (`godot/assets/pirate/`): the ships, rowboats, piers, barrels, crates and the wreck — downloaded from https://opengameart.org/content/pirate-kit
 
+## Ground textures (CC0)
+
+- `godot/assets/terrain/`: made from ambientCG's "Grass004" and "Ground037" (https://ambientcg.com, CC0 1.0).
+
 ## Sound (CC0)
 
 - `godot/assets/audio/`: sounds from Kenney's sound packs (Impact Sounds, Interface Sounds, RPG Audio), and "Battle Theme A" by cynicmusic (https://opengameart.org/content/battle-theme-a, CC0) — via the CC0 collection `@netforge/asset-library-files`.
