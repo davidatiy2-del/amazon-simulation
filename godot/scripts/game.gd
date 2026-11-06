@@ -60,7 +60,8 @@ func _ready():
 	hud.skin_pressed.connect(func(): hud.show_screen(""); skin_menu.open(look, "שמור"))
 	touch.pressed.connect(_on_button)
 	var cfg := _load_cfg()
-	quality = cfg.get("quality", "med")
+	quality = cfg.get("quality", _guess_quality())
+	Engine.max_fps = 60   # (a phone's 120 Hz screen would only heat it up)
 	look = _look_from(cfg.get("look", {}))
 	hud.quality = quality
 	ResourceLoader.load_threaded_request(WORLD)
@@ -112,6 +113,7 @@ func _process(dt: float):
 	touch.set_label("city", null if mine != null else "")
 	touch.battle = war.state == "battle" or war.state == "won"
 	hud.update_stats(player, dn)
+	_dynamic_res(dt)
 	if hud.diag_on:
 		var pp := player.global_position
 		hud.diag_extra = "chief (%.1f, %.2f, %.1f) %s%s floor %s · crowd %d/%d · units %d" % [pp.x, pp.y, pp.z, player.state, " swim" if player.swimming else "", player.is_on_floor(), crowd.stats.near, crowd.stats.far, war.units.size()]
@@ -754,6 +756,39 @@ func _read_save() -> Dictionary:
 	if int(d.get("v", 1)) < 3: return {}
 	return d
 
+# the first time: a setting that suits the phone, from its graphics chip and memory
+static func _guess_quality() -> String:
+	var gpu := RenderingServer.get_video_adapter_name().to_lower()
+	var mem := float(OS.get_memory_info().get("physical", 0)) / 1073741824.0
+	var strong := false
+	for k in ["adreno (tm) 7", "adreno (tm) 8", "adreno (tm) 66", "adreno (tm) 69", "xclipse", "immortalis", "mali-g71", "mali-g72", "mali-g78", "mali-g710", "mali-g715", "mali-g720", "mali-g925", "apple"]:
+		if gpu.contains(k): strong = true
+	var weak := false
+	for k in ["adreno (tm) 5", "adreno (tm) 61", "adreno (tm) 60", "mali-g5", "mali-t", "powervr"]:
+		if gpu.contains(k): weak = true
+	if OS.get_name() != "Android": return "high"
+	if strong and mem > 5.0: return "high"
+	if weak or (mem > 0.0 and mem < 3.5): return "low"
+	return "med"
+
+# keeps the frame rate: when frames come slow the 3D picture is drawn at a lower resolution (and back up when there
+# is room), within what the chosen setting allows
+var _res_t := 0.0
+var _res_ms := 0.0
+var _res_n := 0
+var _auto := OS.get_cmdline_user_args().has("auto")   # (the automatic tests run slowly on purpose: keep their picture)
+func _dynamic_res(dt: float):
+	if _auto: return
+	_res_ms += dt * 1000.0; _res_n += 1; _res_t += dt
+	if _res_t < 2.0: return
+	var avg := _res_ms / maxf(1.0, float(_res_n))
+	_res_t = 0.0; _res_ms = 0.0; _res_n = 0
+	var vp := get_viewport()
+	var top: float = {"high": 1.0, "med": 0.85, "low": 0.7}[quality]
+	var bottom: float = {"high": 0.7, "med": 0.6, "low": 0.5}[quality]
+	if avg > 36.0: vp.scaling_3d_scale = maxf(bottom, vp.scaling_3d_scale - 0.05)
+	elif avg < 24.0: vp.scaling_3d_scale = minf(top, vp.scaling_3d_scale + 0.05)
+
 func _load_cfg() -> Dictionary:
 	var d = JSON.parse_string(FileAccess.get_file_as_string("user://settings.json")) if FileAccess.file_exists("user://settings.json") else null
 	return d if d is Dictionary else {}
@@ -802,9 +837,10 @@ func _apply_quality():
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if quality == "low" or (quality == "med" and not big) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	dn.sun.shadow_enabled = quality != "low"
 	dn.sun.directional_shadow_max_distance = 80.0 if quality == "high" else 45.0
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if quality != "low" else Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = {"high": 0.9, "med": 0.75, "low": 0.6}[quality]
-	vp.msaa_3d = Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED
+	# (the mobile renderer scales the 3D picture bilinearly; multisampling is cheap on phones' tiled GPUs)
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = {"high": 0.9, "med": 0.8, "low": 0.65}[quality]
+	vp.msaa_3d = Viewport.MSAA_2X if quality != "low" else Viewport.MSAA_DISABLED
 	dn.env.glow_enabled = quality != "low"
 	fog_now = 0.0016 if quality != "low" else 0.0032
 	dn.env.fog_density = fog_now

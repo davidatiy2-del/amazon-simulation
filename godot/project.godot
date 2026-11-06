@@ -1,13 +1,19 @@
 ; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
 config_version=5
 
 [application]
 
 config/name="Amazonia"
 run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.7", "Mobile")
 config/quit_on_go_back=false
-run/low_processor_mode=false
+config/features=PackedStringArray("4.7", "Mobile")
 
 [display]
 
@@ -31,18 +37,14 @@ locale/include_text_server_data=true
 
 [physics]
 
-3d/physics_engine="Jolt Physics"
 common/physics_jitter_fix=0.0
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 
 renderer/rendering_method="mobile"
-renderer/rendering_method.mobile="mobile"
-rendering_device/fallback_to_opengl3=true
 textures/vram_compression/import_etc2_astc=true
-anti_aliasing/quality/msaa_3d=2
 lights_and_shadows/directional_shadow/size=2048
-lights_and_shadows/directional_shadow/size.mobile=2048
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=1
+anti_aliasing/quality/msaa_3d=2
 mesh_lod/lod_change/threshold_pixels=2.0
-textures/default_filters/anisotropic_filtering_level=2
