@@ -8,6 +8,7 @@ signal resume_pressed
 signal quality_changed(q: String)
 signal respawn_pressed
 signal skin_pressed
+signal unstuck_pressed
 
 var bars := {}
 var clock: Label
@@ -23,6 +24,11 @@ var hurt_rect: ColorRect
 var screens := {}
 var quality := "med"
 var has_save := false
+var diag: Label                 # the technical overlay ("מידע טכני" in the pause menu)
+var diag_on := false
+var diag_t := 0.0
+var diag_extra := ""            # lines the game adds (where the chief is, what he does)
+var _bars_box: Control
 
 const GOLD := Color(0.98, 0.82, 0.45)
 
@@ -36,6 +42,7 @@ func _ready():
 	box.set_anchors_preset(Control.PRESET_TOP_RIGHT); box.position = Vector2(-300, 18); box.size = Vector2(280, 10)
 	box.anchor_left = 1.0; box.anchor_right = 1.0; box.offset_left = -300; box.offset_right = -20; box.offset_top = 16
 	add_child(box)
+	_bars_box = box
 	for k in [["hp", "בריאות", Color(0.86, 0.27, 0.25)], ["food", "מזון", Color(0.93, 0.6, 0.25)], ["water", "מים", Color(0.3, 0.62, 0.95)], ["stam", "אנרגיה", Color(0.95, 0.85, 0.35)], ["hull", "ספינה", Color(0.66, 0.5, 0.32)]]:
 		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10)
 		var pb := ProgressBar.new(); pb.max_value = 100; pb.show_percentage = false; pb.custom_minimum_size = Vector2(190, 14)
@@ -70,7 +77,20 @@ func _ready():
 	feed.anchor_left = 0.5; feed.anchor_right = 0.5; feed.offset_left = -250; feed.offset_right = 250; feed.offset_top = 76
 	feed.alignment = BoxContainer.ALIGNMENT_BEGIN; feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(feed)
+	diag = _label("", 13, Color(0.75, 1.0, 0.8)); diag.position = Vector2(100, 128); diag.text_direction = Control.TEXT_DIRECTION_LTR
+	diag.visible = false; add_child(diag)
 	_make_screens()
+	resized.connect(_fit_safe)
+	_fit_safe()
+
+# keep the bars and the corner text off the screen's rounded corners and its camera's notch
+func _fit_safe():
+	var sr := TouchControls.safe_rect(self)
+	var right_in := size.x - sr.end.x
+	if _bars_box: _bars_box.offset_right = -20 - right_in; _bars_box.offset_left = -300 - right_in; _bars_box.offset_top = 16 + sr.position.y
+	var lx := 100.0 + sr.position.x
+	for n in [clock, trophies, fps, city_label, diag]:
+		if n: n.position.x = lx
 
 func _label(t: String, fs: int, col := Color(1, 1, 1)) -> Label:
 	var l := Label.new(); l.text = t; l.add_theme_font_size_override("font_size", fs)
@@ -117,14 +137,18 @@ func _make_screens():
 	var nb := _button("מסע חדש", false); nb.name = "New"; c.add_child(nb)
 	nb.pressed.connect(func(): start_pressed.emit(true))
 	c.add_child(_quality_row())
-	var note := _label("גרסה 3 · הממלכות: ערים, אבירים וסוסים, צי וכיבושים, חיות מלחמה", 16, Color(1, 1, 1, 0.55))
+	var note := _label("גרסה 4 · מנוע Godot 4.7: פיזיקה אמיתית, שליטה ומצלמה חדשות, גרפיקה חדה", 16, Color(1, 1, 1, 0.55))
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(note)
 
 	c = _screen("pause", 0.55)
 	t = _label("הג׳ונגל מחכה", 54, GOLD); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
 	var rb := _button("להמשיך", true); c.add_child(rb); rb.pressed.connect(func(): resume_pressed.emit())
 	var skb := _button("הדמות שלי", false); c.add_child(skb); skb.pressed.connect(func(): skin_pressed.emit())
+	var ub := _button("תקוע? חזרה למקום בטוח", false); c.add_child(ub); ub.pressed.connect(func(): unstuck_pressed.emit())
 	c.add_child(_quality_row())
+	var db := _button("מידע טכני", false); db.custom_minimum_size = Vector2(200, 44); db.add_theme_font_size_override("font_size", 18)
+	db.pressed.connect(func(): diag_on = not diag_on; diag.visible = diag_on)
+	c.add_child(db)
 
 	c = _screen("death", 0.6)
 	t = _label("המסע נגמר", 60, Color(1, 0.55, 0.45)); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(t)
@@ -184,6 +208,23 @@ func update_stats(p: Player, dn: DayNight):
 	clock.text = "יום %d · %02d:%02d" % [dn.day, h, m]
 	fps.text = "%d FPS" % Engine.get_frames_per_second()
 	hurt_rect.color.a = move_toward(hurt_rect.color.a, 0.0, 0.02)
+	if diag_on: _diag_update()
+
+# the technical overlay: enough to tell from a screenshot what the phone is doing
+func _diag_update():
+	diag_t -= get_process_delta_time()
+	if diag_t > 0.0: return
+	diag_t = 0.5
+	var P := Performance
+	var lines := [
+		"%d FPS · frame %.1f ms · physics %.1f ms" % [Engine.get_frames_per_second(), P.get_monitor(P.TIME_PROCESS) * 1000.0, P.get_monitor(P.TIME_PHYSICS_PROCESS) * 1000.0],
+		"draws %d · objects %d · prims %dk" % [P.get_monitor(P.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), P.get_monitor(P.RENDER_TOTAL_OBJECTS_IN_FRAME), int(P.get_monitor(P.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000.0)],
+		"video mem %d MB · static %d MB" % [int(P.get_monitor(P.RENDER_VIDEO_MEM_USED) / 1048576.0), int(P.get_monitor(P.MEMORY_STATIC) / 1048576.0)],
+		"%s · %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version()],
+		"%s · %s · Godot %s" % [OS.get_model_name(), quality, Engine.get_version_info().string],
+	]
+	if diag_extra != "": lines.append(diag_extra)
+	diag.text = "\n".join(lines)
 
 func set_trophies(whales: int, oil: int):
 	trophies.text = "" if whales == 0 else "לווייתנים: %d · חביות שמן: %d" % [whales, oil]

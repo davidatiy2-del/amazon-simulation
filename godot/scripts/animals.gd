@@ -84,8 +84,21 @@ static func land_at(x: float, z: float) -> String:
 	if z > 1380.0: return "new"
 	return ""
 
+# inside (or at the walls of) one of the cities
+static var _cities: Array = []   # [x, z, r]
+static func in_city(x: float, z: float) -> bool:
+	if _cities.is_empty():
+		var hd := HeightData.new()
+		for id in hd.places.get("cities", {}):
+			var c: Dictionary = hd.places.cities[id]
+			_cities.append([float(c.center[0]), float(c.center[1]), maxf(float(c.hw), float(c.hd)) + 14.0])
+	for c in _cities:
+		if Vector2(x - c[0], z - c[1]).length() < c[2]: return true
+	return false
+
 static func in_land(land: String, x: float, z: float) -> bool:
 	if absf(x) > 485.0: return false
+	if in_city(x, z): return false
 	if land == "lost": return Vector2(x - 205.0, z - 960.0).length() < 135.0
 	if land == "jungle": return z > -485.0 and z < 560.0
 	return z > 1480.0 and z < 2535.0

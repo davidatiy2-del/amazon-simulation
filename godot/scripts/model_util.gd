@@ -57,10 +57,32 @@ static func scene(path: String) -> PackedScene:
 static func keep(path: String, r: Resource) -> void:
 	if r is PackedScene: _scenes[path] = r
 
+# every skinned mesh told exactly which skeleton moves it. (Imported meshes leave it to be found by itself, and Godot 4.7
+# loses it when a mesh is swapped or the model is scaled before it is drawn: the model then shows unskinned, in its
+# T pose, or a hundred times too big.)
+static func bind_skins(root: Node) -> void:
+	for m in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var skinned := mi.skin != null
+		if not skinned and mi.mesh and mi.mesh.get_surface_count() > 0: skinned = (mi.mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_BONES) != 0
+		if not skinned: continue
+		if not mi.skeleton.is_empty() and mi.get_node_or_null(mi.skeleton) is Skeleton3D: continue
+		var sk: Skeleton3D = null
+		var p := mi.get_parent()
+		while p != null and sk == null:
+			if p is Skeleton3D: sk = p
+			else:
+				for c in p.get_children():
+					if c is Skeleton3D: sk = c; break
+			if p == root: break
+			p = p.get_parent()
+		if sk: mi.skeleton = mi.get_path_to(sk)
+
 # a model, scaled so its body is `size` meters along `axis` (1: height, 2: length), standing on y = 0, inside a holder
 static func make(path: String, size: float, axis := 1) -> Node3D:
 	var holder := Node3D.new()
 	var n: Node3D = scene(path).instantiate()
+	bind_skins(n)
 	holder.add_child(n)
 	var bb := body_bounds(n)
 	var k := size / maxf(0.001, bb.size[axis])

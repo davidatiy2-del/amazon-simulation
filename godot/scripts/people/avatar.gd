@@ -50,6 +50,7 @@ func setup(lk: Dictionary, h := 1.8) -> Avatar:
 	ap = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if fam == "kk": _dress_kk()
 	else: Skins.smooth_model(model)
+	ModelUtil.bind_skins(model)
 	_fit()
 	_set_loops()
 	if fam == "q" and lk.get("weapon", "") == "spear": _make_spear()

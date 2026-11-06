@@ -87,7 +87,9 @@ func tick(dt: float, player: Player, night: bool):
 			if alive and dist < sense and state != "flee": state = "flee"; t = 0.0
 		"hunter":
 			var range_: float = kind.sense * (1.5 if night else 1.0)
-			if alive and dist < range_ and state != "chase" and state != "attack" and (night or player.hp < 70.0 or dist < kind.sense * 0.5): state = "chase"; t = 0.0
+			var safe := Animals.in_city(player.global_position.x, player.global_position.z)
+			if alive and not safe and dist < range_ and state != "chase" and state != "attack" and (night or player.hp < 70.0 or dist < kind.sense * 0.5): state = "chase"; t = 0.0
+			elif safe and (state == "chase" or state == "attack"): state = "idle"; t = 0.0
 	var spd := 0.0
 	match state:
 		"idle":
@@ -136,7 +138,8 @@ func tick(dt: float, player: Player, night: bool):
 	if speed > 0.01:
 		var step := Vector3(sin(face), 0, cos(face)) * speed * dt
 		var np := position + step
-		if _good_ground(np.x, np.z) or state == "flee" or state == "chase": position = np
+		if Animals.in_city(np.x, np.z): state = "idle"; t = 0.0; face += PI   # (the walls: turn back)
+		elif _good_ground(np.x, np.z) or state == "flee" or state == "chase": position = np
 		else: state = "idle"; t = 0.0
 	position = hd.push_out(position, 0.3)
 	position.y = hd.height(position.x, position.z)

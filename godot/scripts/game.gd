@@ -56,6 +56,7 @@ func _ready():
 	hud.resume_pressed.connect(_resume)
 	hud.quality_changed.connect(_set_quality)
 	hud.respawn_pressed.connect(_respawn)
+	hud.unstuck_pressed.connect(_unstuck)
 	hud.skin_pressed.connect(func(): hud.show_screen(""); skin_menu.open(look, "שמור"))
 	touch.pressed.connect(_on_button)
 	var cfg := _load_cfg()
@@ -110,6 +111,9 @@ func _process(dt: float):
 	touch.set_label("city", null if mine != null else "")
 	touch.battle = war.state == "battle" or war.state == "won"
 	hud.update_stats(player, dn)
+	if hud.diag_on:
+		var pp := player.global_position
+		hud.diag_extra = "chief (%.1f, %.2f, %.1f) %s%s floor %s · crowd %d/%d · units %d" % [pp.x, pp.y, pp.z, player.state, " swim" if player.swimming else "", player.is_on_floor(), crowd.stats.near, crowd.stats.far, war.units.size()]
 	hud.set_trophies(whales_taken, oil)
 	_hud_lines(mine)
 	_nav()
@@ -384,8 +388,12 @@ func _start(fresh: bool):
 					b.place(Vector3(bs.x, 0, bs.z), bs.yaw); b.hull = bs.get("hull", 100.0)
 		war.load_state(s.get("war", {}))
 		var on: String = s.get("on_boat", "")
+		var boarded := false
 		for b in boats:
-			if b.get_meta("id") == on: board(b)
+			if b.get_meta("id") == on: board(b); boarded = true
+		# a saved place in deep water, not on a boat: the castle instead
+		if not boarded and hd.water_depth(player.global_position.x, player.global_position.z) > Player.SWIM_DEPTH and not hd.on_deck(player.global_position.x, player.global_position.z):
+			_place_at_castle()
 	day_last = dn.day
 	for c in animals.get_children(): c.queue_free()
 	animals.list.clear()
@@ -499,6 +507,23 @@ func _respawn():
 	hud.show_screen("")
 	hud.msg("התעוררת בטירה. האנשים שלך הביאו אותך הביתה")
 	_save()
+
+# "stuck?" in the pause menu: to a safe place (in a battle: the beach the army landed on; otherwise the castle)
+func _unstuck():
+	_resume()
+	if player.boat: hud.msg("אתה על ספינה — אפשר פשוט להפליג"); return
+	if player.horse: dismount()
+	if player.state != "dead": player.state = "move"
+	if war.state == "battle" or war.state == "won":
+		var tc := war.target_city()
+		var lp := Vector3(float(tc.data.landing[0]), 0, float(tc.data.landing[1]))
+		var q := hd.land_near(lp.x, lp.z, 30.0)
+		player.place(q if q != Vector3.INF else lp)
+		hud.msg("חזרת לחוף הנחיתה")
+	else:
+		_place_at_castle()
+		hud.msg("חזרת לטירה")
+	rig.snap()
 
 # ---- what the chief does to the world ----
 func player_strike(from: Vector3, fwd: Vector3, reach: float, dmg: float):
@@ -700,16 +725,20 @@ func _save():
 		if lead: pos = lead.position
 	var cs := {}
 	for id in cities: cs[id] = cities[id].save_state()
-	var s := {"v": 3, "x": pos.x, "z": pos.z, "face": player.face, "hp": player.hp, "food": player.food,
+	var s := {"v": SAVE_V, "x": pos.x, "z": pos.z, "face": player.face, "hp": player.hp, "food": player.food,
 		"water": player.water, "stam": player.stam, "time": dn.time, "day": dn.day, "whales": whales_taken, "oil": oil, "sailed": sailed,
 		"boats": bs, "on_boat": player.boat.get_meta("id") if player.boat else "", "look": _look_to(look), "cities": cs, "war": war.save_state()}
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f: f.store_string(JSON.stringify(s)); f.close()
 
+const SAVE_V := 4
 func _read_save() -> Dictionary:
 	if not FileAccess.file_exists(SAVE): return {}
 	var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
-	return d if d is Dictionary and d.has("x") else {}
+	if not (d is Dictionary and d.has("x")): return {}
+	# saves from before the kingdoms (versions 1-2) were made in another world: their places mean nothing here
+	if int(d.get("v", 1)) < 3: return {}
+	return d
 
 func _load_cfg() -> Dictionary:
 	var d = JSON.parse_string(FileAccess.get_file_as_string("user://settings.json")) if FileAccess.file_exists("user://settings.json") else null
